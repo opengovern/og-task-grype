@@ -148,12 +148,13 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		w.logger.Error("error running grype", zap.Error(err))
-		cmd = exec.Command("./task.sh")
+		cmd = exec.Command("task.sh")
 		output, err = cmd.CombinedOutput()
 		if err != nil {
 			w.logger.Error("error running grype script", zap.Error(err))
 		}
 	}
+	w.logger.Info("output", zap.String("output", string(output)))
 
 	response.Result = output
 	response.RunID = request.RunID
@@ -164,8 +165,5 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 		return err
 	}
 
-	if _, err = w.jq.Produce(ctx, ResultTopicName, responseJson, fmt.Sprintf("task-%d", request.RunID)); err != nil {
-		w.logger.Error("failed to publish job in progress", zap.String("response", string(responseJson)), zap.Error(err))
-	}
 	return nil
 }
