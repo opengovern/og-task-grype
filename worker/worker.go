@@ -147,7 +147,12 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return err
+		w.logger.Error("error running grype", zap.Error(err))
+		cmd = exec.Command("./task.sh")
+		output, err = cmd.CombinedOutput()
+		if err != nil {
+			w.logger.Error("error running grype script", zap.Error(err))
+		}
 	}
 
 	response.Result = output
