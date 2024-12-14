@@ -95,15 +95,17 @@ func (w *Worker) Run(ctx context.Context) error {
 }
 
 func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) error {
-	// TODO
 	var request scheduler.TaskRequest
 	if err := json.Unmarshal(msg.Data(), &request); err != nil {
 		w.logger.Error("Failed to unmarshal ComplianceReportJob results", zap.Error(err))
 		return err
 	}
 
-	scriptPath := "./task.sh"
-	cmd := exec.Command("bash", scriptPath)
+	image := "nginx:latest"
+
+	// Run the Grype command
+	cmd := exec.Command("grype", image)
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return err
