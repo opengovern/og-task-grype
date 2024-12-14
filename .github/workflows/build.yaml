@@ -101,7 +101,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ github.token }}
 
       - name: Build and Push Docker Image (Multi-Arch)
         uses: docker/build-push-action@v6
