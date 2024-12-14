@@ -4,7 +4,7 @@ FROM golang:alpine AS build
 # Install dependencies
 RUN apk --no-cache add ca-certificates curl git
 
-# Set Grype version without leading 'v' to match asset naming
+# Set Grype version
 ARG GRYPE_VERSION="0.86.1"
 
 # Download and install Grype
@@ -14,10 +14,13 @@ RUN curl -sSfL "https://github.com/anchore/grype/releases/download/v${GRYPE_VERS
 # Verify grype installation
 RUN /usr/local/bin/grype version
 
-# Build og-task-grype
+# Set the working directory and copy all files
 WORKDIR /app
 COPY . .
-RUN go build -o og-task-grype ./local/og-task-grype.go
+
+# Build your Go binary from the main package at root level
+# This assumes main.go is the entrypoint of your Go application
+RUN go build -o og-task-grype .
 
 # Final minimal image
 FROM scratch
