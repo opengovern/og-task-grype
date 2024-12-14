@@ -10,13 +10,12 @@ jobs:
     environment: main
     env:
       GH_ACCESS_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
-    # Use ubuntu-latest
     runs-on: ubuntu-latest
     outputs:
-      latest_tag: ${{ steps.set_latest_tag.outputs.latest_tag }}
+      tags: ${{ steps.set_latest_tag.outputs.tags }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install musl cc
         uses: awalsh128/cache-apt-pkgs-action@v1
@@ -47,11 +46,10 @@ jobs:
       - name: Pack Local Task Build
         run: tar -cvf local.tar local
 
-      # Update to v4 of upload-artifact
-      - name: Upload Local Artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: local-og-task-grype
+          name: og-task-grype
           path: ./local.tar
           retention-days: 1
 
@@ -59,12 +57,14 @@ jobs:
         id: set_latest_tag
         run: |
           if [[ -z "${{ steps.tag_version.outputs.new_tag }}" ]]; then
-            echo "latest_tag=${{ steps.tag_version.outputs.previous_tag }}" >> "$GITHUB_OUTPUT"
+            # No new tag found, only use previous_tag without latest
+            echo "tags=ghcr.io/${{ github.repository_owner }}/og-task-grype:${{ steps.tag_version.outputs.previous_tag }}" >> "$GITHUB_OUTPUT"
           else
-            echo "latest_tag=${{ steps.tag_version.outputs.new_tag }}" >> "$GITHUB_OUTPUT"
+            # New tag found, use new_tag and latest
+            echo "tags=ghcr.io/${{ github.repository_owner }}/og-task-grype:${{ steps.tag_version.outputs.new_tag }} ghcr.io/${{ github.repository_owner }}/og-task-grype:latest" >> "$GITHUB_OUTPUT"
           fi
 
-  deploy-local-task:
+  deploy-task:
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -74,36 +74,37 @@ jobs:
     environment: main
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # Update to v4 of download-artifact
-      - name: Download Local Task Artifact
+      - name: Download Artifact
         uses: actions/download-artifact@v4
         with:
-          name: local-og-task-grype
+          name: og-task-grype
           path: .
 
-      - name: Unpack Local Task Artifact
+      - name: Unpack Task Artifact
         run: tar -xvf local.tar
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to Container Registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_PAT }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push Docker Image for Local Task
-        uses: docker/build-push-action@v4
+      - name: Build and Push Docker Image (Multi-Arch)
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
           push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/og-task-grype:local-latest
-            ghcr.io/${{ github.repository_owner }}/og-task-grype:local-${{ needs.build.outputs.latest_tag }}
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ needs.build.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
