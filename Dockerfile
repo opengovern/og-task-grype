@@ -4,11 +4,8 @@ FROM golang:alpine AS build
 # Install dependencies
 RUN apk --no-cache add ca-certificates curl git
 
-# Set Grype version
-ARG GRYPE_VERSION="v0.86.1"
-
 # Download and install Grype
-RUN curl -sSfL "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_amd64.tar.gz" \
+RUN curl -sSfL "https://github.com/anchore/grype/releases/download/v0.86.1/grype_0.86.1_linux_amd64.tar.gz" \
     | tar -xz -C /usr/local/bin grype
 
 # Verify grype installation
