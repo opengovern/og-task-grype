@@ -143,20 +143,20 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 	}
 
 	image := "nginx:latest"
+	if v, ok := request.Params["image"]; ok {
+		image = v
+	}
+	w.logger.Info("Scanning image", zap.String("image", image))
 
 	// Run the Grype command
 	cmd := exec.Command("grype", image)
 
 	output, err := cmd.CombinedOutput()
-	if err != nil {
-		w.logger.Error("error running grype", zap.Error(err))
-		cmd = exec.Command("task.sh")
-		output, err = cmd.CombinedOutput()
-		if err != nil {
-			w.logger.Error("error running grype script", zap.Error(err))
-		}
-	}
 	w.logger.Info("output", zap.String("output", string(output)))
+	if err != nil {
+		w.logger.Error("error running grype script", zap.Error(err))
+		return err
+	}
 
 	response.Result = output
 	response.RunID = request.RunID
