@@ -77,12 +77,14 @@ func (w *Worker) Run(ctx context.Context) error {
 			}
 		}()
 
-		if err := w.ProcessMessage(ctx, msg); err != nil {
+		err := w.ProcessMessage(ctx, msg)
+		if err != nil {
 			w.logger.Error("failed to process message", zap.Error(err))
 		}
-		err := msg.Ack()
-		if err != nil {
-			w.logger.Error("failed to ack message", zap.Error(err))
+		ticker.Stop()
+
+		if err := msg.Ack(); err != nil {
+			w.logger.Error("failed to send the ack message", zap.Error(err), zap.Any("msg", msg))
 		}
 
 		w.logger.Info("processing a job completed")
@@ -136,7 +138,7 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 		return err
 	}
 
-	if _, err = w.jq.Produce(ctx, ResultTopicName, responseJson, fmt.Sprintf("task-%d", request.RunID)); err != nil {
+	if _, err = w.jq.Produce(ctx, ResultTopicName, responseJson, fmt.Sprintf("task-run-inprogress-%d", request.RunID)); err != nil {
 		w.logger.Error("failed to publish job in progress", zap.String("response", string(responseJson)), zap.Error(err))
 	}
 
