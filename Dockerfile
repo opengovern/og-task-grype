@@ -4,7 +4,7 @@ FROM golang:1.23-alpine AS build
 # Install required dependencies
 RUN apk --no-cache add ca-certificates curl git tar
 
-# Install Grype (v0.86.1 is just from the logs, but by default installs latest stable)
+# Install Grype (installs latest stable by default)
 RUN curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
 RUN grype version
 
@@ -13,7 +13,7 @@ ARG GRYPE_DB_URL="https://grype.anchore.io/databases/vulnerability-db_v5_2024-12
 RUN mkdir -p /.cache/grype/db/5
 RUN curl -sSfL "$GRYPE_DB_URL" | tar -xz -C /.cache/grype/db/5
 
-# Build your Go binary (main.go requires Go >= 1.23.3)
+# Build your Go binary
 WORKDIR /app
 COPY . .
 RUN go build -o og-task-grype main.go
@@ -36,4 +36,5 @@ COPY --from=build /.cache/grype/db /.cache/grype/db
 # Disable auto-updates
 ENV GRYPE_DB_AUTO_UPDATE=false
 
-ENTRYPOINT ["/og-task-grype"]
+# Run Grype directly against the registry image
+ENTRYPOINT ["/usr/local/bin/grype", "registry:ubuntu:latest"]
