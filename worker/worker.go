@@ -37,7 +37,7 @@ func NewWorker(
 		return nil, err
 	}
 
-	if err := jq.Stream(ctx, StreamName, "task job queue", []string{TopicName}, 100); err != nil {
+	if err := jq.Stream(ctx, StreamName, "task job queue", []string{TopicName, ResultTopicName}, 100); err != nil {
 		logger.Error("failed to create stream", zap.Error(err))
 		return nil, err
 	}
@@ -111,7 +111,7 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 
 	defer func() {
 		if err != nil {
-			//response.FailureMessage = err.Error()
+			response.FailureMessage = err.Error()
 			response.Status = models.TaskRunStatusFailed
 		} else {
 			response.Status = models.TaskRunStatusFailed

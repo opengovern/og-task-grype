@@ -151,6 +151,8 @@ github.com/opengovern/og-util v1.1.9 h1:Pswy4yOEcUS9FZW/3ThTBNNtRdyhhGdW9oj/GJ5W
 github.com/opengovern/og-util v1.1.9/go.mod h1:dyn8rhmxq59o1jnbgGfmcUvW7iB/eN6OxoTUUx6jEHA=
 github.com/opengovern/opencomply v0.521.1 h1:LxJ3wdMValUT0XfabUK8jvApFAC5hv8GCR/T4vgTZjQ=
 github.com/opengovern/opencomply v0.521.1/go.mod h1:LnCUAuO6yKZv2BzOnxgJv4GjA6t0TXf7/xIgPxUBjl8=
+github.com/opengovern/opencomply v0.521.12 h1:/b73w+bdwjTxn3APF0oYi19SkQnrOyu7jIorqLfK/00=
+github.com/opengovern/opencomply v0.521.12/go.mod h1:LnCUAuO6yKZv2BzOnxgJv4GjA6t0TXf7/xIgPxUBjl8=
 github.com/pkg/errors v0.8.0/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
