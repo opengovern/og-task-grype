@@ -12,22 +12,28 @@ jobs:
       GH_ACCESS_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
     runs-on: ubuntu-latest
     outputs:
+      # The tags determined here will be used by the deploy-task job.
       tags: ${{ steps.set_latest_tag.outputs.tags }}
+
     steps:
+      # 1. Check out source code
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # 2. Install musl-based C compiler for static builds
       - name: Install musl cc
         uses: awalsh128/cache-apt-pkgs-action@v1
         with:
           packages: musl-tools musl-dev musl
 
+      # 3. Set up Go environment (with caching) from go.mod
       - name: Setup Go with Caching
         uses: actions/setup-go@v4
         with:
           go-version-file: './go.mod'
           cache: true
 
+      # 4. Determine a new version tag based on the repository's tags/commits
       - name: Tag Version
         id: tag_version
         uses: mathieudutour/github-tag-action@v6.1
@@ -36,16 +42,20 @@ jobs:
           release_branches: main
           tag_prefix: v
 
+      # 5. Configure Git for private repos if needed
       - name: Configure Git for Private Repos
         run: |
           git config --global url.https://$GH_ACCESS_TOKEN@github.com/opengovern.insteadOf https://github.com/opengovern
 
+      # 6. Build the binary locally (outside Docker) for testing or artifact purposes.
       - name: Build Local Task App
         run: make local-build
 
+      # 7. Package the locally built binary into a tar artifact
       - name: Pack Local Task Build
         run: tar -cvf local.tar local
 
+      # 8. Upload artifact for the next job to use if needed
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -53,14 +63,15 @@ jobs:
           path: ./local.tar
           retention-days: 1
 
+      # 9. Set the tags output variable so the deploy-task job knows what tags to push
       - name: Set Latest Tag Output
         id: set_latest_tag
         run: |
           if [[ -z "${{ steps.tag_version.outputs.new_tag }}" ]]; then
-            # No new tag found, only use previous_tag without latest
+            # If no new tag was created, only use previous_tag without latest
             echo "tags=ghcr.io/${{ github.repository_owner }}/og-task-grype:${{ steps.tag_version.outputs.previous_tag }}" >> "$GITHUB_OUTPUT"
           else
-            # New tag found, output tags in a multiline format
+            # If a new tag was created, output both the new tag and `latest` as multiline
             {
               echo "tags<<EOF"
               echo "ghcr.io/${{ github.repository_owner }}/og-task-grype:${{ steps.tag_version.outputs.new_tag }}"
@@ -73,29 +84,37 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     permissions:
+      # Grant necessary permissions for pushing to GHCR
       id-token: write
       contents: read
       packages: write
     environment: main
+
     steps:
+      # 1. Check out code again so we have the Dockerfile and source code for the Docker build
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # 2. (Optional) Download the previously built artifact, if you need it for comparison or additional steps.
       - name: Download Artifact
         uses: actions/download-artifact@v4
         with:
           name: og-task-grype
           path: .
 
+      # 3. Unpack the previously built binary (if needed for any reason before Docker build)
       - name: Unpack Task Artifact
         run: tar -xvf local.tar
 
+      # 4. Set up QEMU for cross-platform builds (needed for multi-arch images)
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
+      # 5. Set up Docker Buildx builder for building multi-arch images
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # 6. Log in to GitHub Container Registry using the automatically provided GITHUB_TOKEN (with package write perms)
       - name: Log in to Container Registry
         uses: docker/login-action@v3
         with:
@@ -103,6 +122,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
+      # 7. Build and push the final image. The Dockerfile will handle building the binary inside Docker,
+      # ensuring a clean and reproducible build environment for the final container image.
       - name: Build and Push Docker Image (Multi-Arch)
         uses: docker/build-push-action@v6
         with:
