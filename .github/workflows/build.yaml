@@ -16,15 +16,18 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
+
       - name: Install musl cc
         uses: awalsh128/cache-apt-pkgs-action@v1
         with:
           packages: musl-tools musl-dev musl
-      - name: Setup Go
+
+      - name: Setup Go with Caching
         uses: actions/setup-go@v4
         with:
           go-version-file: './go.mod'
-#          cache: false  # Disable Go modules caching
+          cache: true
+
       - name: Tag Version
         id: tag_version
         uses: mathieudutour/github-tag-action@v6.1
@@ -32,23 +35,26 @@ jobs:
           github_token: ${{ secrets.GH_ACCESS_TOKEN }}
           release_branches: main
           tag_prefix: v
-      # Removed Go modules cache step
+
       - name: Configure Git for Private Repos
         run: |
           git config --global url.https://$GH_ACCESS_TOKEN@github.com/opengovern.insteadOf https://github.com/opengovern
-      - name: Build Local Describer App
-        working-directory: .
+
+      # Build your local task binary. Ensure `make local-build` is set up for building tasks.
+      - name: Build Local Task App
         run: make local-build
-      - name: Pack Local Describer Build
-        working-directory: .
-        run: |
-          tar -cvf local.tar local
+
+      # Pack the local task binary into a tarball
+      - name: Pack Local Task Build
+        run: tar -cvf local.tar local
+
       - name: Upload Local Artifact
         uses: actions/upload-artifact@v3
         with:
           name: local-og-task-grype
           path: ./local.tar
           retention-days: 1
+
       - name: Set Latest Tag Output
         id: set_latest_tag
         run: |
@@ -57,37 +63,46 @@ jobs:
           else
             echo "latest_tag=${{ steps.tag_version.outputs.new_tag }}" >> "$GITHUB_OUTPUT"
           fi
-  deploy-local-describer:
-    needs:
-      - build
+
+  deploy-local-task:
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
+      packages: write
     environment: main
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
-      - name: Download Local Describer Artifact
+
+      - name: Download Local Task Artifact
         uses: actions/download-artifact@v3
         with:
           name: local-og-task-grype
           path: .
-      - name: Unpack Local Describer Artifact
-        run: |
-          tar -xvf local.tar
+
+      - name: Unpack Local Task Artifact
+        run: tar -xvf local.tar
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
       - name: Log in to Container Registry
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GHCR_PAT }}
-      - name: Build and Push Docker Image for Local Describer
+
+      - name: Build and Push Docker Image for Local Task
         uses: docker/build-push-action@v4
         with:
+          context: .
+          file: Dockerfile
           push: true
           tags: |
             ghcr.io/${{ github.repository_owner }}/og-task-grype:local-latest
             ghcr.io/${{ github.repository_owner }}/og-task-grype:local-${{ needs.build.outputs.latest_tag }}
-          file: Dockerfile
-          context: .
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
