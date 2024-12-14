@@ -5,15 +5,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
-	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/opengovern/resilient-bridge/utils"
 	"golang.org/x/net/context"
 	"io"
-	"net/http"
-	"net/url"
 	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content/memory"
 	"oras.land/oras-go/v2/registry"
@@ -22,7 +17,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 type AuthConfig struct {
@@ -41,14 +35,6 @@ const (
 	RegistryACR  RegistryType = "acr"
 )
 
-type ImageFormat string
-
-const (
-	FormatDocker      ImageFormat = "docker"
-	FormatOCI         ImageFormat = "oci"
-	FormatSingularity ImageFormat = "singularity"
-)
-
 type Credentials struct {
 	GithubUsername string `json:"github_username"`
 	GithubToken    string `json:"github_token"`
@@ -60,6 +46,29 @@ type Credentials struct {
 	ACRTenantID    string `json:"acr_tenant_id"`
 }
 
+// AllowedMediaTypes defines the permitted OCI and Docker-compatible media types that are acceptable.
+var AllowedMediaTypes = []string{
+	"application/vnd.oci.descriptor.v1+json",
+	"application/vnd.oci.layout.header.v1+json",
+	"application/vnd.oci.image.index.v1+json",
+	"application/vnd.oci.image.manifest.v1+json",
+	"application/vnd.oci.image.config.v1+json",
+	"application/vnd.oci.image.layer.v1.tar",
+	"application/vnd.oci.image.layer.v1.tar+gzip",
+	"application/vnd.oci.image.layer.v1.tar+zstd",
+	"application/vnd.oci.empty.v1+json",
+
+	// Non-distributable (deprecated) layers
+	"application/vnd.oci.image.layer.nondistributable.v1.tar",
+	"application/vnd.oci.image.layer.nondistributable.v1.tar+gzip",
+	"application/vnd.oci.image.layer.nondistributable.v1.tar+zstd",
+
+	// Docker compatible types if needed:
+	"application/vnd.docker.distribution.manifest.v2+json",
+	"application/vnd.docker.image.rootfs.diff.tar.gzip",
+	"application/vnd.docker.container.image.v1+json",
+}
+
 func fetchImage(registryType, output, ociArtifactURI string, creds Credentials) error {
 	cfg := DockerConfig{
 		Auths: make(map[string]AuthConfig),
@@ -67,27 +76,20 @@ func fetchImage(registryType, output, ociArtifactURI string, creds Credentials) 
 
 	switch RegistryType(registryType) {
 	case RegistryGHCR:
-		ghcrAuth, err := getGHCRAuth(creds.GithubUsername, creds.GithubToken)
+		ghcrCreds, err := utils.GetGHCRCredentials(creds.GithubUsername, creds.GithubToken)
 		if err != nil {
 			return fmt.Errorf("GHCR error: %v\n", err)
 		}
+		ghcrAuth := map[string]AuthConfig{}
+		for host, val := range ghcrCreds {
+			ghcrAuth[host] = AuthConfig{Auth: val}
+		}
 		mergeAuths(cfg.Auths, ghcrAuth)
-	case RegistryECR:
-		ecrAuth, err := getECRAuth(creds.ECRAccountID, creds.ECRRegion)
-		if err != nil {
-			return fmt.Errorf("ECR error: %v\n", err)
-		}
-		mergeAuths(cfg.Auths, ecrAuth)
-	case RegistryACR:
-		acrAuth, err := getACRAuth(creds.ACRLoginServer, creds.ACRTenantID)
-		if err != nil {
-			return fmt.Errorf("ACR error: %v\n", err)
-		}
-		mergeAuths(cfg.Auths, acrAuth)
 	default:
 		return fmt.Errorf("Unsupported registry type: %s\n", registryType)
 	}
 
+	// If user requested, write out the credentials to a file or print them
 	configBytes, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return fmt.Errorf("Error marshaling config to JSON: %v\n", err)
@@ -100,7 +102,6 @@ func fetchImage(registryType, output, ociArtifactURI string, creds Credentials) 
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			return fmt.Errorf("Error creating directory for output file: %v\n", err)
 		}
-
 		err = os.WriteFile(output, configBytes, 0600)
 		if err != nil {
 			return fmt.Errorf("Error writing to output file: %v\n", err)
@@ -108,18 +109,42 @@ func fetchImage(registryType, output, ociArtifactURI string, creds Credentials) 
 		fmt.Printf("Credentials written to %s\n", output)
 	}
 
-	if ociArtifactURI != "" {
-		if err := pullAndCreateDockerArchive(ociArtifactURI, cfg); err != nil {
-			return fmt.Errorf("Failed to process %s: %v\n", ociArtifactURI, err)
-		} else {
-			fmt.Printf("Successfully created image.tar for %s.\n", ociArtifactURI)
-		}
+	if err := pullAndCreateDockerArchive(ociArtifactURI, cfg); err != nil {
+		return fmt.Errorf("Failed to process %s: %v\n", ociArtifactURI, err)
+	} else {
+		fmt.Printf("Successfully created image.tar for %s.\n", ociArtifactURI)
 	}
 	return nil
 }
 
-// pullAndCreateDockerArchive pulls the image into memory, extracts config and layers,
-// and creates a docker-archive (image.tar) that can be used by Grype.
+// loadDockerConfigFile loads a Docker config.json file from the specified path.
+// It returns a DockerConfig object on success.
+func loadDockerConfigFile(path string) (DockerConfig, error) {
+	var dc DockerConfig
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		return dc, fmt.Errorf("failed to read file: %w", err)
+	}
+	if err := json.Unmarshal(bytes, &dc); err != nil {
+		return dc, fmt.Errorf("failed to unmarshal docker config.json: %w", err)
+	}
+	if dc.Auths == nil {
+		dc.Auths = make(map[string]AuthConfig)
+	}
+	return dc, nil
+}
+
+// pullAndCreateDockerArchive pulls the OCI image specified by ociArtifactURI using the given DockerConfig credentials,
+// converts it to a Docker archive (image.tar) that Grype can scan, and writes out all intermediate files.
+//
+// Steps:
+// 1. Parse the reference for the OCI image.
+// 2. Set up an auth client using the provided credentials.
+// 3. Use oras.Copy to retrieve the OCI image into an in-memory store.
+// 4. Extract manifest, config, layers into local files: config.json, manifest.json (Docker-style), oci-manifest.json, and layers.
+// 5. Validate the OCI artifact's media types.
+// 6. Package all these files into a tarball named image.tar.
+// 7. Remove manifest.json and oci-manifest.json after creating the tar.
 func pullAndCreateDockerArchive(ociArtifactURI string, cfg DockerConfig) error {
 	ctx := context.Background()
 
@@ -156,15 +181,13 @@ func pullAndCreateDockerArchive(ociArtifactURI string, cfg DockerConfig) error {
 	}
 	repo.Client = authClient
 
-	// Pull the artifact into memory store
-	memoryStore := memory.New()
-
+	// Pull the image into memory store
 	desc, err := oras.Copy(ctx, repo, ref.Reference, memoryStore, "", oras.DefaultCopyOptions)
 	if err != nil {
 		return fmt.Errorf("oras pull failed: %w", err)
 	}
 
-	// Fetch the manifest content
+	// Fetch and read the manifest content
 	rc, err := memoryStore.Fetch(ctx, desc)
 	if err != nil {
 		return fmt.Errorf("failed to fetch manifest: %w", err)
@@ -176,10 +199,20 @@ func pullAndCreateDockerArchive(ociArtifactURI string, cfg DockerConfig) error {
 		return fmt.Errorf("failed to read manifest: %w", err)
 	}
 
+	// Write out the OCI manifest for reference as oci-manifest.json
+	if err := os.WriteFile("oci-manifest.json", manifestContent, 0644); err != nil {
+		return fmt.Errorf("failed to write oci-manifest.json: %w", err)
+	}
+
 	// Parse the manifest as OCI image manifest
 	var manifest ocispec.Manifest
 	if err := json.Unmarshal(manifestContent, &manifest); err != nil {
 		return fmt.Errorf("failed to unmarshal manifest: %w", err)
+	}
+
+	// Validate that all media types in manifest are allowed
+	if err := validateOCIMediaTypes(manifest); err != nil {
+		return fmt.Errorf("media type validation failed: %w", err)
 	}
 
 	// Fetch config
@@ -194,7 +227,12 @@ func pullAndCreateDockerArchive(ociArtifactURI string, cfg DockerConfig) error {
 		return fmt.Errorf("failed to read config: %w", err)
 	}
 
-	// Fetch layers
+	// Write config.json
+	if err := os.WriteFile("config.json", configBytes, 0644); err != nil {
+		return fmt.Errorf("failed to write config.json: %w", err)
+	}
+
+	// Fetch layers and write them out as layer tarfiles
 	var layerFiles []string
 	for i, layerDesc := range manifest.Layers {
 		layerRC, err := memoryStore.Fetch(ctx, layerDesc)
@@ -213,21 +251,7 @@ func pullAndCreateDockerArchive(ociArtifactURI string, cfg DockerConfig) error {
 		layerFiles = append(layerFiles, layerFileName)
 	}
 
-	// Write config.json
-	if err := os.WriteFile("config.json", configBytes, 0644); err != nil {
-		return fmt.Errorf("failed to write config.json: %w", err)
-	}
-
-	// Write manifest.json (Docker format)
-	// Docker format manifest.json is an array of objects
-	// Example:
-	// [
-	//   {
-	//     "Config":"config.json",
-	//     "RepoTags":["ghcr.io/opengovern/steampipe-plugin-aws:v0.1.6"],
-	//     "Layers":["layer1.tar","layer2.tar",...]
-	//   }
-	// ]
+	// Create a Docker-style manifest.json for the image.tar
 	repoTag := ref.String()
 	dockerManifest := []map[string]interface{}{
 		{
@@ -244,22 +268,48 @@ func pullAndCreateDockerArchive(ociArtifactURI string, cfg DockerConfig) error {
 		return fmt.Errorf("failed to write manifest.json: %w", err)
 	}
 
-	// Create image.tar
-	if err := createTar("image.tar", append([]string{"manifest.json", "config.json"}, layerFiles...)); err != nil {
+	// Finally, create image.tar containing manifest.json, config.json, oci-manifest.json, and layers
+	filesToTar := append([]string{"manifest.json", "config.json", "oci-manifest.json"}, layerFiles...)
+	if err := createTar("image.tar", filesToTar); err != nil {
 		return fmt.Errorf("failed to create tar: %w", err)
 	}
 
-	// Cleanup individual files if desired
-	// For now, leave them. Uncomment if cleanup is desired:
-	/*
-		for _, f := range append([]string{"manifest.json", "config.json"}, layerFiles...) {
-			os.Remove(f)
-		}
-	*/
+	// Remove manifest.json and oci-manifest.json after creating the tar
+	if err := os.Remove("manifest.json"); err != nil {
+		return fmt.Errorf("failed to remove manifest.json: %w", err)
+	}
+	if err := os.Remove("oci-manifest.json"); err != nil {
+		return fmt.Errorf("failed to remove oci-manifest.json: %w", err)
+	}
 
 	return nil
 }
 
+// validateOCIMediaTypes checks if the config and layers in the manifest use allowed media types.
+func validateOCIMediaTypes(manifest ocispec.Manifest) error {
+	if !isAllowedMediaType(manifest.Config.MediaType) {
+		return fmt.Errorf("config media type %q is not allowed", manifest.Config.MediaType)
+	}
+	for _, layer := range manifest.Layers {
+		if !isAllowedMediaType(layer.MediaType) {
+			return fmt.Errorf("layer media type %q is not allowed", layer.MediaType)
+		}
+	}
+	return nil
+}
+
+// isAllowedMediaType checks if the provided media type is in AllowedMediaTypes.
+func isAllowedMediaType(mt string) bool {
+	for _, allowed := range AllowedMediaTypes {
+		if mt == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+// createTar creates a tarball at tarPath containing the specified files.
+// Each file is added to the tar archive in the given order.
 func createTar(tarPath string, files []string) error {
 	tarFile, err := os.Create(tarPath)
 	if err != nil {
@@ -293,168 +343,15 @@ func createTar(tarPath string, files []string) error {
 		}
 		fh.Close()
 	}
-
 	return nil
 }
 
-// GHCR auth: username + PAT
-func getGHCRAuth(username, token string) (map[string]AuthConfig, error) {
-	if username == "" || token == "" {
-		return nil, fmt.Errorf("GHCR requires --gh-username and --gh-token")
-	}
-	authStr := username + ":" + token
-	encoded := base64.StdEncoding.EncodeToString([]byte(authStr))
-	return map[string]AuthConfig{
-		"ghcr.io": {Auth: encoded},
-	}, nil
-}
-
-// ECR auth: Use AWS SDK to get Docker credentials
-func getECRAuth(accountID, region string) (map[string]AuthConfig, error) {
-	if accountID == "" || region == "" {
-		return nil, fmt.Errorf("ECR requires --aws-account-id and --region")
-	}
-
-	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
-	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS config: %w", err)
-	}
-
-	client := ecr.NewFromConfig(cfg)
-	resp, err := client.GetAuthorizationToken(context.Background(), &ecr.GetAuthorizationTokenInput{
-		RegistryIds: []string{accountID},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ECR auth token: %w", err)
-	}
-
-	if len(resp.AuthorizationData) == 0 || resp.AuthorizationData[0].AuthorizationToken == nil {
-		return nil, fmt.Errorf("no authorization token received from ECR")
-	}
-
-	authData := resp.AuthorizationData[0]
-	decoded, err := base64.StdEncoding.DecodeString(*authData.AuthorizationToken)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode auth token: %w", err)
-	}
-
-	registry := *authData.ProxyEndpoint
-	registry = strings.TrimPrefix(registry, "https://")
-
-	authStr := string(decoded) // "AWS:<token>"
-	encoded := base64.StdEncoding.EncodeToString([]byte(authStr))
-
-	return map[string]AuthConfig{
-		registry: {Auth: encoded},
-	}, nil
-}
-
-// ACR auth: Use azidentity to get AAD token, then exchange for ACR token
-func getACRAuth(loginServer, tenantID string) (map[string]AuthConfig, error) {
-	if loginServer == "" || tenantID == "" {
-		return nil, fmt.Errorf("ACR requires --acr-login-server and --acr-tenant-id")
-	}
-
-	cred, err := azidentity.NewDefaultAzureCredential(nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get default azure credential: %w", err)
-	}
-	ctx := context.Background()
-	aadToken, err := cred.GetToken(ctx, policy.TokenRequestOptions{Scopes: []string{"https://management.azure.com/.default"}})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get AAD token: %w", err)
-	}
-
-	refreshToken, err := getACRRefreshToken(ctx, loginServer, tenantID, aadToken.Token)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ACR refresh token: %w", err)
-	}
-
-	accessToken, err := getACRAccessToken(ctx, loginServer, refreshToken)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ACR access token: %w", err)
-	}
-
-	// username is a placeholder
-	authStr := "00000000-0000-0000-0000-000000000000:" + accessToken
-	encoded := base64.StdEncoding.EncodeToString([]byte(authStr))
-	return map[string]AuthConfig{
-		loginServer: {Auth: encoded},
-	}, nil
-}
-
-func getACRRefreshToken(ctx context.Context, acrService, tenantID, aadAccessToken string) (string, error) {
-	formData := url.Values{
-		"grant_type":   {"access_token"},
-		"service":      {acrService},
-		"tenant":       {tenantID},
-		"access_token": {aadAccessToken},
-	}
-
-	urlStr := fmt.Sprintf("https://%s/oauth2/exchange", acrService)
-	respBody, err := httpPostForm(ctx, urlStr, formData)
-	if err != nil {
-		return "", err
-	}
-	var response map[string]interface{}
-	if err := json.Unmarshal(respBody, &response); err != nil {
-		return "", fmt.Errorf("invalid exchange response: %w", err)
-	}
-	refreshToken, ok := response["refresh_token"].(string)
-	if !ok || refreshToken == "" {
-		return "", fmt.Errorf("no refresh_token in ACR exchange response")
-	}
-	return refreshToken, nil
-}
-
-func getACRAccessToken(ctx context.Context, acrService, refreshToken string) (string, error) {
-	formData := url.Values{
-		"grant_type":    {"refresh_token"},
-		"service":       {acrService},
-		"refresh_token": {refreshToken},
-		"scope":         {"repository:*:pull,push"},
-	}
-
-	urlStr := fmt.Sprintf("https://%s/oauth2/token", acrService)
-	respBody, err := httpPostForm(ctx, urlStr, formData)
-	if err != nil {
-		return "", err
-	}
-
-	var response map[string]interface{}
-	if err := json.Unmarshal(respBody, &response); err != nil {
-		return "", fmt.Errorf("invalid token response: %w", err)
-	}
-	accessToken, ok := response["access_token"].(string)
-	if !ok || accessToken == "" {
-		return "", fmt.Errorf("no access_token in response")
-	}
-	return accessToken, nil
-}
-
-func httpPostForm(ctx context.Context, urlStr string, data url.Values) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, "POST", urlStr, strings.NewReader(data.Encode()))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("POST %s failed: %w", urlStr, err)
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, fmt.Errorf("non-2xx status: %d body: %s", resp.StatusCode, string(body))
-	}
-	return body, nil
-}
-
+// mergeAuths merges authentication entries from src into dst.
 func mergeAuths(dst, src map[string]AuthConfig) {
 	for k, v := range src {
 		dst[k] = v
 	}
 }
+
+// memoryStore is a global in-memory content store used for oras.Copy operations.
+var memoryStore = memory.New()

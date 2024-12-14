@@ -9,6 +9,7 @@ import (
 	"github.com/opengovern/opencomply/services/tasks/db/models"
 	"github.com/opengovern/opencomply/services/tasks/scheduler"
 	"go.uber.org/zap"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"time"
@@ -156,9 +157,15 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 
 	w.logger.Info("Fetching image", zap.String("image", ociArtifactURL))
 
-	err = fetchImage(registryType, "./image.tar", ociArtifactURL, getCredsFromParams(request.Params))
+	err = fetchImage(registryType, "", ociArtifactURL, getCredsFromParams(request.Params))
 	if err != nil {
 		w.logger.Error("failed to fetch image", zap.String("image", ociArtifactURL), zap.Error(err))
+		return err
+	}
+
+	err = showFiles()
+	if err != nil {
+		w.logger.Error("failed to show files", zap.Error(err))
 		return err
 	}
 
@@ -205,4 +212,28 @@ func getCredsFromParams(params map[string]string) Credentials {
 		}
 	}
 	return creds
+}
+
+func showFiles() error {
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	// List the files in the current directory
+	files, err := ioutil.ReadDir(currentDir)
+	if err != nil {
+		return err
+	}
+
+	// Print each file or directory name
+	fmt.Printf("Listing files in directory: %s\n", currentDir)
+	for _, file := range files {
+		if file.IsDir() {
+			fmt.Printf("[DIR] %s\n", file.Name())
+		} else {
+			fmt.Printf("[FILE] %s\n", file.Name())
+		}
+	}
+	return nil
 }
