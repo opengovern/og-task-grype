@@ -142,14 +142,30 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 		w.logger.Error("failed to publish job in progress", zap.String("response", string(responseJson)), zap.Error(err))
 	}
 
-	image := "nginx:latest"
-	if v, ok := request.Params["image"]; ok {
-		image = v
+	var ociArtifactURL, registryType string
+	if v, ok := request.Params["oci_artifact_url"]; ok {
+		ociArtifactURL = v
+	} else {
+		return fmt.Errorf("OCI artifact url parameter is not provided")
 	}
-	w.logger.Info("Scanning image", zap.String("image", image))
+	if v, ok := request.Params["registry_type"]; ok {
+		registryType = v
+	} else {
+		registryType = "ghcr"
+	}
+
+	w.logger.Info("Fetching image", zap.String("image", ociArtifactURL))
+
+	err = fetchImage(registryType, "./image.tar", ociArtifactURL, getCredsFromParams(request.Params))
+	if err != nil {
+		w.logger.Error("failed to fetch image", zap.String("image", ociArtifactURL), zap.Error(err))
+		return err
+	}
+
+	w.logger.Info("Scanning image", zap.String("image", "image.tar"))
 
 	// Run the Grype command
-	cmd := exec.Command("grype", image)
+	cmd := exec.Command("grype", "docker-archive:./image.tar")
 
 	output, err := cmd.CombinedOutput()
 	w.logger.Info("output", zap.String("output", string(output)))
@@ -168,4 +184,25 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 	}
 
 	return nil
+}
+
+func getCredsFromParams(params map[string]string) Credentials {
+	creds := Credentials{}
+	for k, v := range params {
+		switch k {
+		case "github_username":
+			creds.GithubUsername = v
+		case "github_token":
+			creds.GithubToken = v
+		case "ecr_account_id":
+			creds.ECRAccountID = v
+		case "ecr_region":
+			creds.ECRRegion = v
+		case "acr_login_server":
+			creds.ACRLoginServer = v
+		case "acr_tenant_id":
+			creds.ACRTenantID = v
+		}
+	}
+	return creds
 }
