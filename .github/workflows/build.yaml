@@ -68,16 +68,9 @@ jobs:
         id: set_latest_tag
         run: |
           if [[ -z "${{ steps.tag_version.outputs.new_tag }}" ]]; then
-            # If no new tag was created, only use previous_tag without latest
-            echo "tags=ghcr.io/${{ github.repository_owner }}/og-task-grype:${{ steps.tag_version.outputs.previous_tag }}" >> "$GITHUB_OUTPUT"
+            echo "latest_tag=${{ steps.tag_version.outputs.previous_tag }}" >> "$GITHUB_OUTPUT"
           else
-            # If a new tag was created, output both the new tag and `latest` as multiline
-            {
-              echo "tags<<EOF"
-              echo "ghcr.io/${{ github.repository_owner }}/og-task-grype:${{ steps.tag_version.outputs.new_tag }}"
-              echo "ghcr.io/${{ github.repository_owner }}/og-task-grype:latest"
-              echo "EOF"
-            } >> "$GITHUB_OUTPUT"
+            echo "latest_tag=${{ steps.tag_version.outputs.new_tag }}" >> "$GITHUB_OUTPUT"
           fi
 
   deploy-task:
