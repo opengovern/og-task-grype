@@ -9,21 +9,6 @@ import (
 	"syscall"
 )
 
-var (
-	// Stream name
-	StreamName = os.Getenv("STREAM_NAME")
-	// Queue name
-	QueueName = os.Getenv("QUEUE_NAME")
-	// Topic name Reciever
-	TopicNameReciever = os.Getenv("TOPIC_NAME")
-	// Nats server url
-	NatsURL = os.Getenv("NATS_URL")
-	// Topic name Sender
-	TopicNameSender = os.Getenv("TOPIC_NAME_SENDER")
-	// GRPC server url
-	GRPCServerURL = os.Getenv("GRPC_SERVER_URL")
-)
-
 func main() {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)

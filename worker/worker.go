@@ -38,7 +38,7 @@ func NewWorker(
 		return nil, err
 	}
 
-	if err := jq.Stream(ctx, StreamName, "task job queue", []string{TopicName}, 200000); err != nil {
+	if err := jq.Stream(ctx, StreamName, "task job queue", []string{TopicName}, 100); err != nil {
 		logger.Error("failed to create stream", zap.Error(err))
 		return nil, err
 	}
