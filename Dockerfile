@@ -1,29 +1,23 @@
 # Build stage
-FROM golang:alpine AS build
+FROM alpine:3.18 AS build
 
-# Install dependencies for building and for grype db update
-RUN apk --no-cache add ca-certificates curl git
+# Install dependencies for building, downloading, and extracting
+RUN apk --no-cache add ca-certificates curl git tar
 
-# Install Grype using the official script
-# If not copied locally, fetch directly:
+# Install Grype using the official script (latest stable)
 RUN curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
-
-# Verify grype installation
 RUN grype version
 
-# Set environment variables so that grype downloads the DB into a known directory
-ENV GRYPE_DB_CACHE_DIR=/grype-db-cache
-ENV GRYPE_DB_AUTO_UPDATE=false
+# Download and extract a known database (example: the latest v5 DB)
+ARG GRYPE_DB_URL="https://grype.anchore.io/databases/vulnerability-db_v5_2024-12-14T01:31:37Z_1734150182.tar.gz"
+ARG GRYPE_DB_CACHE_DIR="/grype-db-cache"
 RUN mkdir -p $GRYPE_DB_CACHE_DIR
+RUN curl -sSfL "$GRYPE_DB_URL" | tar -xz -C $GRYPE_DB_CACHE_DIR
 
-# Download the Grype vulnerability database at build time (airgap preparation)
-# In some cases you may need --skip-tls-verify depending on your environment
-RUN grype db update --cache-dir $GRYPE_DB_CACHE_DIR
-
-# Build your Go binary (og-task-grype)
+# Build your Go binary (assuming main.go is at project root)
 WORKDIR /app
 COPY . .
-RUN go build -o og-task-grype ./main.go
+RUN go build -o og-task-grype main.go
 
 # Final minimal image
 FROM scratch
@@ -34,15 +28,14 @@ COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 # Copy Grype binary
 COPY --from=build /usr/local/bin/grype /usr/local/bin/grype
 
-# Copy the pre-downloaded database
-COPY --from=build /grype-db-cache /grype-db-cache
-
-# Copy your application binary
+# Copy og-task-grype binary
 COPY --from=build /app/og-task-grype /og-task-grype
 
-# Set environment variables so Grype uses the embedded DB and does not try to update
-ENV GRYPE_DB_CACHE_DIR=/grype-db-cache
-ENV GRYPE_DB_AUTO_UPDATE=false
+# Copy the downloaded database
+COPY --from=build /grype-db-cache /grype-db-cache
 
-# Set entrypoint
+# Disable auto-updates and tell Grype where the DB is
+ENV GRYPE_DB_AUTO_UPDATE=false
+ENV GRYPE_DB_CACHE_DIR=/grype-db-cache
+
 ENTRYPOINT ["/og-task-grype"]
