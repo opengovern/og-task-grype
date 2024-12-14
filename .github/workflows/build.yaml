@@ -60,8 +60,13 @@ jobs:
             # No new tag found, only use previous_tag without latest
             echo "tags=ghcr.io/${{ github.repository_owner }}/og-task-grype:${{ steps.tag_version.outputs.previous_tag }}" >> "$GITHUB_OUTPUT"
           else
-            # New tag found, use new_tag and latest
-            echo "tags=ghcr.io/${{ github.repository_owner }}/og-task-grype:${{ steps.tag_version.outputs.new_tag }} ghcr.io/${{ github.repository_owner }}/og-task-grype:latest" >> "$GITHUB_OUTPUT"
+            # New tag found, output tags in a multiline format
+            {
+              echo "tags<<EOF"
+              echo "ghcr.io/${{ github.repository_owner }}/og-task-grype:${{ steps.tag_version.outputs.new_tag }}"
+              echo "ghcr.io/${{ github.repository_owner }}/og-task-grype:latest"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
           fi
 
   deploy-task:
