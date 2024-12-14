@@ -10,6 +10,7 @@ jobs:
     environment: main
     env:
       GH_ACCESS_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
+    # Use ubuntu-latest
     runs-on: ubuntu-latest
     outputs:
       latest_tag: ${{ steps.set_latest_tag.outputs.latest_tag }}
@@ -40,16 +41,15 @@ jobs:
         run: |
           git config --global url.https://$GH_ACCESS_TOKEN@github.com/opengovern.insteadOf https://github.com/opengovern
 
-      # Build your local task binary. Ensure `make local-build` is set up for building tasks.
       - name: Build Local Task App
         run: make local-build
 
-      # Pack the local task binary into a tarball
       - name: Pack Local Task Build
         run: tar -cvf local.tar local
 
+      # Update to v4 of upload-artifact
       - name: Upload Local Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: local-og-task-grype
           path: ./local.tar
@@ -76,8 +76,9 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
+      # Update to v4 of download-artifact
       - name: Download Local Task Artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: local-og-task-grype
           path: .
