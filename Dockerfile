@@ -21,6 +21,9 @@ RUN go build -o og-task-grype main.go
 # Final minimal image
 FROM scratch
 
+# Create a /tmp directory since scratch doesn't have one
+RUN mkdir /tmp && chmod 1777 /tmp
+
 # Copy CA certificates
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
@@ -36,5 +39,5 @@ COPY --from=build /.cache/grype/db /.cache/grype/db
 # Disable auto-updates
 ENV GRYPE_DB_AUTO_UPDATE=false
 
-# Run Grype directly against the registry image
-ENTRYPOINT ["/usr/local/bin/grype", "registry:ubuntu:latest"]
+# Set a generic entrypoint to Grype so any arguments can be passed at runtime
+ENTRYPOINT ["/usr/local/bin/grype"]
