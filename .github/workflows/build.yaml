@@ -116,21 +116,17 @@ jobs:
 
       # 6. Log in to GitHub Container Registry using the automatically provided GITHUB_TOKEN (with package write perms)
       - name: Log in to Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v2
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ github.token }}
-
-      # 7. Build and push the final image. The Dockerfile will handle building the binary inside Docker,
-      # ensuring a clean and reproducible build environment for the final container image.
-      - name: Build and Push Docker Image (Multi-Arch)
-        uses: docker/build-push-action@v6
+          password: ${{ secrets.GHCR_PAT }}
+      - name: Build and Push Docker Image for Local Describer
+        uses: docker/build-push-action@v4
         with:
-          context: .
-          file: Dockerfile
           push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ needs.build.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/og-task-grype:local-latest
+            ghcr.io/${{ github.repository_owner }}/og-task-grype:local-${{ needs.build.outputs.latest_tag }}
+          file: Dockerfile
+          context: .
