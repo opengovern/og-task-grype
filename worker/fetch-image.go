@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"encoding/base64"
 	"encoding/json"
+	"flag"
 	"fmt"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opengovern/resilient-bridge/utils"
@@ -17,7 +18,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
+
+// MaxSizeMiB is the maximum allowed size of the image in MiB, defaulting to 2 GiB.
+const MaxSizeMiB = 2048 // 2 GiB
+var maxSizeBytes = int64(MaxSizeMiB) * 1024 * 1024
+
+// MaxRetries for pulling and processing the artifact
+const MaxRetries = 3
+
+// BackoffBaseDelay is the base delay for exponential backoff between retries.
+const BackoffBaseDelay = 2 * time.Second
 
 type AuthConfig struct {
 	Auth string `json:"auth,omitempty"`
@@ -69,56 +81,94 @@ var AllowedMediaTypes = []string{
 	"application/vnd.docker.container.image.v1+json",
 }
 
-func fetchImage(registryType, output, ociArtifactURI string, creds Credentials) error {
+func fetchImage(registryType, outputDir, ociArtifactURI string, creds Credentials) error {
+	flag.Parse()
+
+	// Initialize a DockerConfig structure
 	cfg := DockerConfig{
 		Auths: make(map[string]AuthConfig),
 	}
 
-	switch RegistryType(registryType) {
-	case RegistryGHCR:
-		ghcrCreds, err := utils.GetGHCRCredentials(creds.GithubUsername, creds.GithubToken)
-		if err != nil {
-			return fmt.Errorf("GHCR error: %v\n", err)
-		}
-		ghcrAuth := map[string]AuthConfig{}
-		for host, val := range ghcrCreds {
-			ghcrAuth[host] = AuthConfig{Auth: val}
-		}
-		mergeAuths(cfg.Auths, ghcrAuth)
-	default:
-		return fmt.Errorf("Unsupported registry type: %s\n", registryType)
+	ghInputJSON := fmt.Sprintf(`{
+			"github": {
+				"username": %q,
+				"token": %q
+			}
+		}`, creds.GithubUsername, creds.GithubToken)
+
+	ghcrCreds, err := utils.GetAllCredentials([]byte(ghInputJSON), "")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "GHCR error: %v\n", err)
+		os.Exit(1)
 	}
+
+	ghcrAuth := map[string]AuthConfig{}
+	for host, val := range ghcrCreds {
+		ghcrAuth[host] = AuthConfig{Auth: val}
+	}
+	mergeAuths(cfg.Auths, ghcrAuth)
 
 	// If user requested, write out the credentials to a file or print them
 	configBytes, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
-		return fmt.Errorf("Error marshaling config to JSON: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error marshaling config to JSON: %v\n", err)
+		os.Exit(1)
 	}
 
-	if output == "" {
+	if outputDir == "" {
 		fmt.Println(string(configBytes))
 	} else {
-		dir := filepath.Dir(output)
+		dir := filepath.Dir(outputDir)
 		if err := os.MkdirAll(dir, 0700); err != nil {
-			return fmt.Errorf("Error creating directory for output file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error creating directory for output file: %v\n", err)
+			os.Exit(1)
 		}
-		err = os.WriteFile(output, configBytes, 0600)
+		err = os.WriteFile(outputDir, configBytes, 0600)
 		if err != nil {
-			return fmt.Errorf("Error writing to output file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error writing to output file: %v\n", err)
+			os.Exit(1)
 		}
-		fmt.Printf("Credentials written to %s\n", output)
+		fmt.Printf("Credentials written to %s\n", outputDir)
 	}
 
-	if err := pullAndCreateDockerArchive(ociArtifactURI, cfg); err != nil {
-		return fmt.Errorf("Failed to process %s: %v\n", ociArtifactURI, err)
-	} else {
-		fmt.Printf("Successfully created image.tar for %s.\n", ociArtifactURI)
+	// Attempt pulling and creating Docker archive with retries
+	for i := 1; i <= MaxRetries; i++ {
+		err = pullAndCreateDockerArchive(ociArtifactURI, cfg)
+		if err == nil {
+			fmt.Printf("Successfully created image.tar for %s.\n", ociArtifactURI)
+			break
+		}
+
+		if isNoSpaceError(err) {
+			// Attempt cleanup before retry
+			cleanupIntermediateFiles(".")
+			if i == MaxRetries {
+				// Out of retries
+				fmt.Fprintf(os.Stderr, "Failed due to no space left on device even after cleanup: %v\n", err)
+				os.Exit(1)
+			}
+		} else if isAccessError(err) || isNotFoundError(err) {
+			// Don't retry on access or not found errors
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		} else {
+			// Other errors
+			cleanupIntermediateFiles(".")
+			if i == MaxRetries {
+				fmt.Fprintf(os.Stderr, "Failed after %d attempts: %v\n", MaxRetries, err)
+				os.Exit(1)
+			}
+		}
+
+		// Exponential backoff before next retry
+		backoffDelay := BackoffBaseDelay * time.Duration(i)
+		fmt.Fprintf(os.Stderr, "Retrying in %s...\n", backoffDelay)
+		time.Sleep(backoffDelay)
 	}
+
 	return nil
 }
 
-// loadDockerConfigFile loads a Docker config.json file from the specified path.
-// It returns a DockerConfig object on success.
 func loadDockerConfigFile(path string) (DockerConfig, error) {
 	var dc DockerConfig
 	bytes, err := os.ReadFile(path)
@@ -134,17 +184,6 @@ func loadDockerConfigFile(path string) (DockerConfig, error) {
 	return dc, nil
 }
 
-// pullAndCreateDockerArchive pulls the OCI image specified by ociArtifactURI using the given DockerConfig credentials,
-// converts it to a Docker archive (image.tar) that Grype can scan, and writes out all intermediate files.
-//
-// Steps:
-// 1. Parse the reference for the OCI image.
-// 2. Set up an auth client using the provided credentials.
-// 3. Use oras.Copy to retrieve the OCI image into an in-memory store.
-// 4. Extract manifest, config, layers into local files: config.json, manifest.json (Docker-style), oci-manifest.json, and layers.
-// 5. Validate the OCI artifact's media types.
-// 6. Package all these files into a tarball named image.tar.
-// 7. Remove manifest.json and oci-manifest.json after creating the tar.
 func pullAndCreateDockerArchive(ociArtifactURI string, cfg DockerConfig) error {
 	ctx := context.Background()
 
@@ -181,13 +220,23 @@ func pullAndCreateDockerArchive(ociArtifactURI string, cfg DockerConfig) error {
 	}
 	repo.Client = authClient
 
-	// Pull the image into memory store
-	desc, err := oras.Copy(ctx, repo, ref.Reference, memoryStore, "", oras.DefaultCopyOptions)
+	// Create custom copy options with concurrency = 1 for low bandwidth resilience
+	opts := oras.DefaultCopyOptions
+	opts.Concurrency = 1 // single-threaded fetch
+
+	desc, err := oras.Copy(ctx, repo, ref.Reference, memoryStore, "", opts)
 	if err != nil {
+		// Check if unauthorized or not found by message
+		errMsg := err.Error()
+		if strings.Contains(strings.ToLower(errMsg), "unauthorized") || strings.Contains(strings.ToLower(errMsg), "forbidden") {
+			return fmt.Errorf("access denied: the credentials provided do not have permission to access %s", ociArtifactURI)
+		}
+		if strings.Contains(strings.ToLower(errMsg), "not found") {
+			return fmt.Errorf("the artifact %s was not found in the registry", ociArtifactURI)
+		}
 		return fmt.Errorf("oras pull failed: %w", err)
 	}
 
-	// Fetch and read the manifest content
 	rc, err := memoryStore.Fetch(ctx, desc)
 	if err != nil {
 		return fmt.Errorf("failed to fetch manifest: %w", err)
@@ -199,12 +248,6 @@ func pullAndCreateDockerArchive(ociArtifactURI string, cfg DockerConfig) error {
 		return fmt.Errorf("failed to read manifest: %w", err)
 	}
 
-	// Write out the OCI manifest for reference as oci-manifest.json
-	if err := os.WriteFile("oci-manifest.json", manifestContent, 0644); err != nil {
-		return fmt.Errorf("failed to write oci-manifest.json: %w", err)
-	}
-
-	// Parse the manifest as OCI image manifest
 	var manifest ocispec.Manifest
 	if err := json.Unmarshal(manifestContent, &manifest); err != nil {
 		return fmt.Errorf("failed to unmarshal manifest: %w", err)
@@ -213,6 +256,26 @@ func pullAndCreateDockerArchive(ociArtifactURI string, cfg DockerConfig) error {
 	// Validate that all media types in manifest are allowed
 	if err := validateOCIMediaTypes(manifest); err != nil {
 		return fmt.Errorf("media type validation failed: %w", err)
+	}
+
+	// Check for a valid artifact: must have config and at least one layer
+	if manifest.Config.Size == 0 || len(manifest.Layers) == 0 {
+		return fmt.Errorf("the artifact appears invalid: missing config or layers")
+	}
+
+	// Check total size of image
+	var totalSize int64
+	totalSize += manifest.Config.Size
+	for _, layer := range manifest.Layers {
+		totalSize += layer.Size
+	}
+	if totalSize > maxSizeBytes {
+		return fmt.Errorf("image size %d bytes exceeds maximum allowed size of %d bytes", totalSize, maxSizeBytes)
+	}
+
+	ociManifestPath := "oci-manifest.json"
+	if err := writeFile(ociManifestPath, manifestContent); err != nil {
+		return fmt.Errorf("failed to write oci-manifest.json: %w", err)
 	}
 
 	// Fetch config
@@ -227,12 +290,12 @@ func pullAndCreateDockerArchive(ociArtifactURI string, cfg DockerConfig) error {
 		return fmt.Errorf("failed to read config: %w", err)
 	}
 
-	// Write config.json
-	if err := os.WriteFile("config.json", configBytes, 0644); err != nil {
+	configPath := "config.json"
+	if err := writeFile(configPath, configBytes); err != nil {
 		return fmt.Errorf("failed to write config.json: %w", err)
 	}
 
-	// Fetch layers and write them out as layer tarfiles
+	// Fetch layers and write them out
 	var layerFiles []string
 	for i, layerDesc := range manifest.Layers {
 		layerRC, err := memoryStore.Fetch(ctx, layerDesc)
@@ -245,13 +308,13 @@ func pullAndCreateDockerArchive(ociArtifactURI string, cfg DockerConfig) error {
 			return fmt.Errorf("failed to read layer: %w", err)
 		}
 		layerFileName := fmt.Sprintf("layer%d.tar", i+1)
-		if err := os.WriteFile(layerFileName, layerBytes, 0644); err != nil {
+		layerPath := layerFileName
+		if err := writeFile(layerPath, layerBytes); err != nil {
 			return fmt.Errorf("failed to write layer to disk: %w", err)
 		}
 		layerFiles = append(layerFiles, layerFileName)
 	}
 
-	// Create a Docker-style manifest.json for the image.tar
 	repoTag := ref.String()
 	dockerManifest := []map[string]interface{}{
 		{
@@ -264,28 +327,28 @@ func pullAndCreateDockerArchive(ociArtifactURI string, cfg DockerConfig) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal docker manifest.json: %w", err)
 	}
-	if err := os.WriteFile("manifest.json", dockerManifestBytes, 0644); err != nil {
+	manifestPath := "manifest.json"
+	if err := writeFile(manifestPath, dockerManifestBytes); err != nil {
 		return fmt.Errorf("failed to write manifest.json: %w", err)
 	}
 
-	// Finally, create image.tar containing manifest.json, config.json, oci-manifest.json, and layers
+	// Create image.tar
 	filesToTar := append([]string{"manifest.json", "config.json", "oci-manifest.json"}, layerFiles...)
 	if err := createTar("image.tar", filesToTar); err != nil {
 		return fmt.Errorf("failed to create tar: %w", err)
 	}
 
 	// Remove manifest.json and oci-manifest.json after creating the tar
-	if err := os.Remove("manifest.json"); err != nil {
+	if err := os.Remove(manifestPath); err != nil {
 		return fmt.Errorf("failed to remove manifest.json: %w", err)
 	}
-	if err := os.Remove("oci-manifest.json"); err != nil {
+	if err := os.Remove(ociManifestPath); err != nil {
 		return fmt.Errorf("failed to remove oci-manifest.json: %w", err)
 	}
 
 	return nil
 }
 
-// validateOCIMediaTypes checks if the config and layers in the manifest use allowed media types.
 func validateOCIMediaTypes(manifest ocispec.Manifest) error {
 	if !isAllowedMediaType(manifest.Config.MediaType) {
 		return fmt.Errorf("config media type %q is not allowed", manifest.Config.MediaType)
@@ -298,7 +361,6 @@ func validateOCIMediaTypes(manifest ocispec.Manifest) error {
 	return nil
 }
 
-// isAllowedMediaType checks if the provided media type is in AllowedMediaTypes.
 func isAllowedMediaType(mt string) bool {
 	for _, allowed := range AllowedMediaTypes {
 		if mt == allowed {
@@ -308,12 +370,10 @@ func isAllowedMediaType(mt string) bool {
 	return false
 }
 
-// createTar creates a tarball at tarPath containing the specified files.
-// Each file is added to the tar archive in the given order.
 func createTar(tarPath string, files []string) error {
 	tarFile, err := os.Create(tarPath)
 	if err != nil {
-		return fmt.Errorf("failed to create tar file: %w", err)
+		return err
 	}
 	defer tarFile.Close()
 
@@ -321,32 +381,32 @@ func createTar(tarPath string, files []string) error {
 	defer tw.Close()
 
 	for _, file := range files {
-		info, err := os.Stat(file)
+		fullPath := file
+		info, err := os.Stat(fullPath)
 		if err != nil {
-			return fmt.Errorf("failed to stat file %s: %w", file, err)
+			return fmt.Errorf("failed to stat file %s: %w", fullPath, err)
 		}
 		header, err := tar.FileInfoHeader(info, "")
 		if err != nil {
-			return fmt.Errorf("failed to create tar header for %s: %w", file, err)
+			return fmt.Errorf("failed to create tar header for %s: %w", fullPath, err)
 		}
 		header.Name = file
 		if err := tw.WriteHeader(header); err != nil {
-			return fmt.Errorf("failed to write header for %s: %w", file, err)
+			return fmt.Errorf("failed to write header for %s: %w", fullPath, err)
 		}
-		fh, err := os.Open(file)
+		fh, err := os.Open(fullPath)
 		if err != nil {
-			return fmt.Errorf("failed to open file %s: %w", file, err)
+			return fmt.Errorf("failed to open file %s: %w", fullPath, err)
 		}
-		if _, err := io.Copy(tw, fh); err != nil {
-			fh.Close()
-			return fmt.Errorf("failed to copy file data for %s: %w", file, err)
-		}
+		_, copyErr := io.Copy(tw, fh)
 		fh.Close()
+		if copyErr != nil {
+			return fmt.Errorf("failed to copy file data for %s: %w", fullPath, copyErr)
+		}
 	}
 	return nil
 }
 
-// mergeAuths merges authentication entries from src into dst.
 func mergeAuths(dst, src map[string]AuthConfig) {
 	for k, v := range src {
 		dst[k] = v
@@ -355,3 +415,39 @@ func mergeAuths(dst, src map[string]AuthConfig) {
 
 // memoryStore is a global in-memory content store used for oras.Copy operations.
 var memoryStore = memory.New()
+
+// writeFile attempts to write data to the specified path, returning an error if it fails.
+func writeFile(path string, data []byte) error {
+	return os.WriteFile(path, data, 0644)
+}
+
+// cleanupIntermediateFiles removes intermediate files (manifest.json, oci-manifest.json, config.json, layer*.tar)
+// from the output directory, if they exist.
+func cleanupIntermediateFiles(outputDir string) {
+	files, err := os.ReadDir(outputDir)
+	if err != nil {
+		return
+	}
+	for _, f := range files {
+		name := f.Name()
+		if name == "config.json" || name == "oci-manifest.json" || name == "manifest.json" ||
+			(strings.HasPrefix(name, "layer") && strings.HasSuffix(name, ".tar")) {
+			os.Remove(filepath.Join(outputDir, name))
+		}
+	}
+}
+
+// isNoSpaceError checks if the error message contains a known substring indicating no space left.
+func isNoSpaceError(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "no space left on device")
+}
+
+func isAccessError(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "access denied") || strings.Contains(msg, "unauthorized") || strings.Contains(msg, "forbidden") || strings.Contains(msg, "permission")
+}
+
+func isNotFoundError(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "not found")
+}

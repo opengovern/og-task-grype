@@ -172,7 +172,7 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 	w.logger.Info("Scanning image", zap.String("image", "image.tar"))
 
 	// Run the Grype command
-	cmd := exec.Command("grype", "docker-archive:./image.tar")
+	cmd := exec.Command("grype", "image.tar")
 
 	output, err := cmd.CombinedOutput()
 	w.logger.Info("output", zap.String("output", string(output)))

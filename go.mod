@@ -6,8 +6,8 @@ require (
 	github.com/nats-io/nats.go v1.37.0
 	github.com/opencontainers/image-spec v1.1.0
 	github.com/opengovern/og-util v1.1.9
-	github.com/opengovern/opencomply v0.521.12
-	github.com/opengovern/resilient-bridge v0.0.0-20241213220204-a0dca4852f6f
+	github.com/opengovern/opencomply v0.524.1
+	github.com/opengovern/resilient-bridge v0.0.0-20241214234803-0d6e81a9351a
 	github.com/spf13/cobra v1.8.1
 	go.uber.org/zap v1.27.0
 	golang.org/x/net v0.31.0
@@ -17,6 +17,7 @@ require (
 )
 
 require (
+	cloud.google.com/go/compute/metadata v0.5.2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/globocom/echo-prometheus v0.1.2 // indirect
@@ -25,6 +26,7 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
+	github.com/golang-jwt/jwt/v4 v4.5.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgio v1.0.0 // indirect
