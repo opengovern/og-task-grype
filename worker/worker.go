@@ -143,11 +143,12 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 		w.logger.Error("failed to publish job in progress", zap.String("response", string(responseJson)), zap.Error(err))
 	}
 
-	response, err = task.RunTask(ctx, w.logger, request)
+	err = task.RunTask(ctx, w.logger, request, response)
 	if err != nil {
 		w.logger.Error("failed to publish job result", zap.String("response", string(responseJson)), zap.Error(err))
 		return err
 	}
+	response.Status = models.TaskRunStatusFinished
 
 	return nil
 }

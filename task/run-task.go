@@ -2,7 +2,6 @@ package task
 
 import (
 	"fmt"
-	"github.com/opengovern/opencomply/services/tasks/db/models"
 	"github.com/opengovern/opencomply/services/tasks/scheduler"
 	"go.uber.org/zap"
 	"golang.org/x/net/context"
@@ -10,14 +9,12 @@ import (
 	"os/exec"
 )
 
-func RunTask(ctx context.Context, logger *zap.Logger, request scheduler.TaskRequest) (*scheduler.TaskResponse, error) {
-	var response scheduler.TaskResponse
-
+func RunTask(ctx context.Context, logger *zap.Logger, request scheduler.TaskRequest, response *scheduler.TaskResponse) error {
 	var ociArtifactURL, registryType string
 	if v, ok := request.Params["oci_artifact_url"]; ok {
 		ociArtifactURL = v
 	} else {
-		return nil, fmt.Errorf("OCI artifact url parameter is not provided")
+		return fmt.Errorf("OCI artifact url parameter is not provided")
 	}
 	if v, ok := request.Params["registry_type"]; ok {
 		registryType = v
@@ -30,13 +27,13 @@ func RunTask(ctx context.Context, logger *zap.Logger, request scheduler.TaskRequ
 	err := fetchImage(registryType, fmt.Sprintf("run-%v", request.RunID), ociArtifactURL, getCredsFromParams(request.Params))
 	if err != nil {
 		logger.Error("failed to fetch image", zap.String("image", ociArtifactURL), zap.Error(err))
-		return nil, err
+		return err
 	}
 
 	err = showFiles(fmt.Sprintf("run-%v", request.RunID))
 	if err != nil {
 		logger.Error("failed to show files", zap.Error(err))
-		return nil, err
+		return err
 	}
 
 	logger.Info("Scanning image", zap.String("image", "image.tar"))
@@ -48,14 +45,11 @@ func RunTask(ctx context.Context, logger *zap.Logger, request scheduler.TaskRequ
 	logger.Info("output", zap.String("output", string(output)))
 	if err != nil {
 		logger.Error("error running grype script", zap.Error(err))
-		return nil, err
+		return err
 	}
 
 	response.Result = output
-	response.RunID = request.RunID
-	response.Status = models.TaskRunStatusFinished
-
-	return &response, nil
+	return nil
 }
 
 func getCredsFromParams(params map[string]string) Credentials {
