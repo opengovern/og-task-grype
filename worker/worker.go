@@ -5,22 +5,22 @@ import (
 	"encoding/json"
 	fmt "fmt"
 	"github.com/nats-io/nats.go/jetstream"
+	"github.com/opencomply/og-task-template/task"
 	"github.com/opengovern/og-util/pkg/jq"
 	"github.com/opengovern/opencomply/services/tasks/db/models"
 	"github.com/opengovern/opencomply/services/tasks/scheduler"
+	"github.com/opengovern/opencomply/services/tasks/worker/consts"
 	"go.uber.org/zap"
-	"io/ioutil"
 	"os"
-	"os/exec"
 	"time"
 )
 
 var (
-	NatsURL         = os.Getenv("NATS_URL")
-	NatsConsumer    = os.Getenv("NATS_CONSUMER")
-	StreamName      = os.Getenv("NATS_STREAM_NAME")
-	TopicName       = os.Getenv("NATS_TOPIC_NAME")
-	ResultTopicName = os.Getenv("NATS_RESULT_TOPIC_NAME")
+	NatsURL         = os.Getenv(consts.NatsURLEnv)
+	NatsConsumer    = os.Getenv(consts.NatsConsumerEnv)
+	StreamName      = os.Getenv(consts.NatsStreamNameEnv)
+	TopicName       = os.Getenv(consts.NatsTopicNameEnv)
+	ResultTopicName = os.Getenv(consts.NatsResultTopicNameEnv)
 )
 
 type Worker struct {
@@ -110,7 +110,7 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 		return err
 	}
 
-	var response scheduler.TaskResponse
+	var response *scheduler.TaskResponse
 
 	defer func() {
 		if err != nil {
@@ -143,92 +143,11 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 		w.logger.Error("failed to publish job in progress", zap.String("response", string(responseJson)), zap.Error(err))
 	}
 
-	var ociArtifactURL, registryType string
-	if v, ok := request.Params["oci_artifact_url"]; ok {
-		ociArtifactURL = v
-	} else {
-		return fmt.Errorf("OCI artifact url parameter is not provided")
-	}
-	if v, ok := request.Params["registry_type"]; ok {
-		registryType = v
-	} else {
-		registryType = "ghcr"
-	}
-
-	w.logger.Info("Fetching image", zap.String("image", ociArtifactURL))
-
-	err = fetchImage(registryType, fmt.Sprintf("run-%v", request.RunID), ociArtifactURL, getCredsFromParams(request.Params))
+	response, err = task.RunTask(ctx, w.logger, request)
 	if err != nil {
-		w.logger.Error("failed to fetch image", zap.String("image", ociArtifactURL), zap.Error(err))
+		w.logger.Error("failed to publish job result", zap.String("response", string(responseJson)), zap.Error(err))
 		return err
 	}
 
-	err = showFiles(fmt.Sprintf("run-%v", request.RunID))
-	if err != nil {
-		w.logger.Error("failed to show files", zap.Error(err))
-		return err
-	}
-
-	w.logger.Info("Scanning image", zap.String("image", "image.tar"))
-
-	// Run the Grype command
-	cmd := exec.Command("grype", fmt.Sprintf("run-%v/%s", request.RunID, "image.tar"))
-
-	output, err := cmd.CombinedOutput()
-	w.logger.Info("output", zap.String("output", string(output)))
-	if err != nil {
-		w.logger.Error("error running grype script", zap.Error(err))
-		return err
-	}
-
-	response.Result = output
-	response.RunID = request.RunID
-	response.Status = models.TaskRunStatusFinished
-	responseJson, err = json.Marshal(response)
-	if err != nil {
-		w.logger.Error("failed to create response json", zap.Error(err))
-		return err
-	}
-
-	return nil
-}
-
-func getCredsFromParams(params map[string]string) Credentials {
-	creds := Credentials{}
-	for k, v := range params {
-		switch k {
-		case "github_username":
-			creds.GithubUsername = v
-		case "github_token":
-			creds.GithubToken = v
-		case "ecr_account_id":
-			creds.ECRAccountID = v
-		case "ecr_region":
-			creds.ECRRegion = v
-		case "acr_login_server":
-			creds.ACRLoginServer = v
-		case "acr_tenant_id":
-			creds.ACRTenantID = v
-		}
-	}
-	return creds
-}
-
-func showFiles(dir string) error {
-	// List the files in the current directory
-	files, err := ioutil.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-
-	// Print each file or directory name
-	fmt.Printf("Listing files in directory: %s\n", dir)
-	for _, file := range files {
-		if file.IsDir() {
-			fmt.Printf("[DIR] %s\n", file.Name())
-		} else {
-			fmt.Printf("[FILE] %s\n", file.Name())
-		}
-	}
 	return nil
 }

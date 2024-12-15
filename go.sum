@@ -172,6 +172,8 @@ github.com/opengovern/og-util v1.1.9 h1:Pswy4yOEcUS9FZW/3ThTBNNtRdyhhGdW9oj/GJ5W
 github.com/opengovern/og-util v1.1.9/go.mod h1:dyn8rhmxq59o1jnbgGfmcUvW7iB/eN6OxoTUUx6jEHA=
 github.com/opengovern/opencomply v0.524.1 h1:0l38VCuRwmkyHsCHusWAMfq8ic111Da4z1eASEl+hIw=
 github.com/opengovern/opencomply v0.524.1/go.mod h1:LnCUAuO6yKZv2BzOnxgJv4GjA6t0TXf7/xIgPxUBjl8=
+github.com/opengovern/opencomply v0.524.14 h1:bpaoUnmAQQVEnndSDXfdKVo/J5L7QQ888qc1BG+hhfc=
+github.com/opengovern/opencomply v0.524.14/go.mod h1:LnCUAuO6yKZv2BzOnxgJv4GjA6t0TXf7/xIgPxUBjl8=
 github.com/opengovern/resilient-bridge v0.0.0-20241213220204-a0dca4852f6f h1:TRq2suUcSt+ARtQZ9pSe3RiO7/vTSqndbpgXWhqRd2s=
 github.com/opengovern/resilient-bridge v0.0.0-20241213220204-a0dca4852f6f/go.mod h1:UAUeHj53z4gkFkok5dvIRJ/de1/vsgMBQM6PvXJm4dA=
 github.com/opengovern/resilient-bridge v0.0.0-20241214234803-0d6e81a9351a h1:NNguGZarFx2djjFjGOge/krq+3fWYPE19weXqiPUNSA=

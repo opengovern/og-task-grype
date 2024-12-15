@@ -7,7 +7,12 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/runtime/protoimpl"
+	"os"
 	"time"
+)
+
+var (
+	GRPCServerURL = os.Getenv("GRPC_SERVER_URL")
 )
 
 // function to send data with grpc
@@ -17,7 +22,7 @@ type ResponseOK struct {
 	unknownFields protoimpl.UnknownFields
 }
 
-func sendGRPC(ctx context.Context, data []byte, logger *zap.Logger) error {
+func SendGRPC(ctx context.Context, data []byte, logger *zap.Logger) error {
 	// create a grpc connection
 	// send the data to the grpc server
 	// the grpc server will save the data to the database
