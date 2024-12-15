@@ -67,25 +67,25 @@ func (w *Worker) Run(ctx context.Context) error {
 	}, []jetstream.PullConsumeOpt{
 		jetstream.PullMaxMessages(1),
 	}, func(msg jetstream.Msg) {
-		w.logger.Info("received a new job")
-		w.logger.Info("committing")
-		if err := msg.InProgress(); err != nil {
-			w.logger.Error("failed to send the initial in progress message", zap.Error(err), zap.Any("msg", msg))
-		}
-		ticker := time.NewTicker(15 * time.Second)
-		go func() {
-			for range ticker.C {
-				if err := msg.InProgress(); err != nil {
-					w.logger.Error("failed to send an in progress message", zap.Error(err), zap.Any("msg", msg))
-				}
-			}
-		}()
+		//w.logger.Info("received a new job")
+		//w.logger.Info("committing")
+		//if err := msg.InProgress(); err != nil {
+		//	w.logger.Error("failed to send the initial in progress message", zap.Error(err), zap.Any("msg", msg))
+		//}
+		//ticker := time.NewTicker(15 * time.Second)
+		//go func() {
+		//	for range ticker.C {
+		//		if err := msg.InProgress(); err != nil {
+		//			w.logger.Error("failed to send an in progress message", zap.Error(err), zap.Any("msg", msg))
+		//		}
+		//	}
+		//}()
 
-		err := w.ProcessMessage(ctx, msg)
-		if err != nil {
-			w.logger.Error("failed to process message", zap.Error(err))
-		}
-		ticker.Stop()
+		//err := w.ProcessMessage(ctx, msg)
+		//if err != nil {
+		//	w.logger.Error("failed to process message", zap.Error(err))
+		//}
+		//ticker.Stop()
 
 		if err := msg.Ack(); err != nil {
 			w.logger.Error("failed to send the ack message", zap.Error(err), zap.Any("msg", msg))
