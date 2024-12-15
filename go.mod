@@ -7,7 +7,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.0
 	github.com/opengovern/og-util v1.1.9
 	github.com/opengovern/opencomply v0.524.1
-	github.com/opengovern/resilient-bridge v0.0.0-20241214234803-0d6e81a9351a
+	github.com/opengovern/resilient-bridge v0.0.0-20241215000157-ad74ef2e3cbe
 	github.com/spf13/cobra v1.8.1
 	go.uber.org/zap v1.27.0
 	golang.org/x/net v0.31.0

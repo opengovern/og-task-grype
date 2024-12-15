@@ -176,6 +176,8 @@ github.com/opengovern/resilient-bridge v0.0.0-20241213220204-a0dca4852f6f h1:TRq
 github.com/opengovern/resilient-bridge v0.0.0-20241213220204-a0dca4852f6f/go.mod h1:UAUeHj53z4gkFkok5dvIRJ/de1/vsgMBQM6PvXJm4dA=
 github.com/opengovern/resilient-bridge v0.0.0-20241214234803-0d6e81a9351a h1:NNguGZarFx2djjFjGOge/krq+3fWYPE19weXqiPUNSA=
 github.com/opengovern/resilient-bridge v0.0.0-20241214234803-0d6e81a9351a/go.mod h1:UAUeHj53z4gkFkok5dvIRJ/de1/vsgMBQM6PvXJm4dA=
+github.com/opengovern/resilient-bridge v0.0.0-20241215000157-ad74ef2e3cbe h1:kzyXKDnYfq3W/ihU4Huu7kPMLG6nxSXqtbdNAjqKgrA=
+github.com/opengovern/resilient-bridge v0.0.0-20241215000157-ad74ef2e3cbe/go.mod h1:C/vnvJN8OuJO+WUpXc/yfp9FSqvvYtZnQQCH6GiH0Yo=
 github.com/pkg/errors v0.8.0/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
