@@ -52,7 +52,8 @@ func NewWorker(
 }
 
 func (w *Worker) Run(ctx context.Context) error {
-	w.logger.Info("starting to consume")
+	w.logger.Info("starting to consume", zap.String("url", NatsURL), zap.String("consumer", NatsConsumer),
+		zap.String("stream", StreamName), zap.String("topic", TopicName))
 
 	consumeCtx, err := w.jq.ConsumeWithConfig(ctx, NatsConsumer, StreamName, []string{TopicName}, jetstream.ConsumerConfig{
 		Replicas:          1,
