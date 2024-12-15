@@ -14,7 +14,7 @@ RUN mkdir -p /.cache/grype/db/5
 RUN curl -sSfL "$GRYPE_DB_URL" | tar -xz -C /.cache/grype/db/5
 
 # Create a /tmp directory since scratch doesn't have one
-RUN mkdir /tmp && chmod 1777 /tmp
+RUN chmod 1777 /tmp
 
 # Build your Go binary
 WORKDIR /app
