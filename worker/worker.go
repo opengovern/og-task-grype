@@ -80,10 +80,10 @@ func (w *Worker) Run(ctx context.Context) error {
 			}
 		}()
 
-		err := w.ProcessMessage(ctx, msg)
-		if err != nil {
-			w.logger.Error("failed to process message", zap.Error(err))
-		}
+		//err := w.ProcessMessage(ctx, msg)
+		//if err != nil {
+		//	w.logger.Error("failed to process message", zap.Error(err))
+		//}
 		ticker.Stop()
 
 		if err := msg.Ack(); err != nil {
