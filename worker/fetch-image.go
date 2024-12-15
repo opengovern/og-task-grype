@@ -84,6 +84,19 @@ var AllowedMediaTypes = []string{
 func fetchImage(registryType, outputDir, ociArtifactURI string, creds Credentials) error {
 	flag.Parse()
 
+	// Ensure output directory exists
+	if err := os.MkdirAll(outputDir, 0700); err != nil {
+		return fmt.Errorf("Error creating output directory: %v\n", err)
+	}
+
+	// Remove existing image.tar if exists
+	imageTarPath := filepath.Join(outputDir, "image.tar")
+	if _, err := os.Stat(imageTarPath); err == nil {
+		if err := os.Remove(imageTarPath); err != nil {
+			return fmt.Errorf("Error removing existing image.tar: %v\n", err)
+		}
+	}
+
 	// Initialize a DockerConfig structure
 	cfg := DockerConfig{
 		Auths: make(map[string]AuthConfig),
@@ -98,8 +111,7 @@ func fetchImage(registryType, outputDir, ociArtifactURI string, creds Credential
 
 	ghcrCreds, err := utils.GetAllCredentials([]byte(ghInputJSON), "")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "GHCR error: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("GHCR error: %v\n", err)
 	}
 
 	ghcrAuth := map[string]AuthConfig{}
@@ -111,29 +123,14 @@ func fetchImage(registryType, outputDir, ociArtifactURI string, creds Credential
 	// If user requested, write out the credentials to a file or print them
 	configBytes, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error marshaling config to JSON: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Error marshaling config to JSON: %v\n", err)
 	}
 
-	if outputDir == "" {
-		fmt.Println(string(configBytes))
-	} else {
-		dir := filepath.Dir(outputDir)
-		if err := os.MkdirAll(dir, 0700); err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating directory for output file: %v\n", err)
-			os.Exit(1)
-		}
-		err = os.WriteFile(outputDir, configBytes, 0600)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error writing to output file: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("Credentials written to %s\n", outputDir)
-	}
+	fmt.Println(string(configBytes))
 
 	// Attempt pulling and creating Docker archive with retries
 	for i := 1; i <= MaxRetries; i++ {
-		err = pullAndCreateDockerArchive(ociArtifactURI, cfg)
+		err = pullAndCreateDockerArchive(ociArtifactURI, cfg, outputDir)
 		if err == nil {
 			fmt.Printf("Successfully created image.tar for %s.\n", ociArtifactURI)
 			break
@@ -141,22 +138,19 @@ func fetchImage(registryType, outputDir, ociArtifactURI string, creds Credential
 
 		if isNoSpaceError(err) {
 			// Attempt cleanup before retry
-			cleanupIntermediateFiles(".")
+			cleanupIntermediateFiles(outputDir)
 			if i == MaxRetries {
 				// Out of retries
-				fmt.Fprintf(os.Stderr, "Failed due to no space left on device even after cleanup: %v\n", err)
-				os.Exit(1)
+				return fmt.Errorf("Failed due to no space left on device even after cleanup: %v\n", err)
 			}
 		} else if isAccessError(err) || isNotFoundError(err) {
 			// Don't retry on access or not found errors
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("%v\n", err)
 		} else {
 			// Other errors
-			cleanupIntermediateFiles(".")
+			cleanupIntermediateFiles(outputDir)
 			if i == MaxRetries {
-				fmt.Fprintf(os.Stderr, "Failed after %d attempts: %v\n", MaxRetries, err)
-				os.Exit(1)
+				return fmt.Errorf("Failed after %d attempts: %v\n", MaxRetries, err)
 			}
 		}
 
@@ -184,7 +178,7 @@ func loadDockerConfigFile(path string) (DockerConfig, error) {
 	return dc, nil
 }
 
-func pullAndCreateDockerArchive(ociArtifactURI string, cfg DockerConfig) error {
+func pullAndCreateDockerArchive(ociArtifactURI string, cfg DockerConfig, outputDir string) error {
 	ctx := context.Background()
 
 	ref, err := registry.ParseReference(ociArtifactURI)
@@ -273,7 +267,7 @@ func pullAndCreateDockerArchive(ociArtifactURI string, cfg DockerConfig) error {
 		return fmt.Errorf("image size %d bytes exceeds maximum allowed size of %d bytes", totalSize, maxSizeBytes)
 	}
 
-	ociManifestPath := "oci-manifest.json"
+	ociManifestPath := filepath.Join(outputDir, "oci-manifest.json")
 	if err := writeFile(ociManifestPath, manifestContent); err != nil {
 		return fmt.Errorf("failed to write oci-manifest.json: %w", err)
 	}
@@ -290,7 +284,7 @@ func pullAndCreateDockerArchive(ociArtifactURI string, cfg DockerConfig) error {
 		return fmt.Errorf("failed to read config: %w", err)
 	}
 
-	configPath := "config.json"
+	configPath := filepath.Join(outputDir, "config.json")
 	if err := writeFile(configPath, configBytes); err != nil {
 		return fmt.Errorf("failed to write config.json: %w", err)
 	}
@@ -308,7 +302,7 @@ func pullAndCreateDockerArchive(ociArtifactURI string, cfg DockerConfig) error {
 			return fmt.Errorf("failed to read layer: %w", err)
 		}
 		layerFileName := fmt.Sprintf("layer%d.tar", i+1)
-		layerPath := layerFileName
+		layerPath := filepath.Join(outputDir, layerFileName)
 		if err := writeFile(layerPath, layerBytes); err != nil {
 			return fmt.Errorf("failed to write layer to disk: %w", err)
 		}
@@ -327,14 +321,14 @@ func pullAndCreateDockerArchive(ociArtifactURI string, cfg DockerConfig) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal docker manifest.json: %w", err)
 	}
-	manifestPath := "manifest.json"
+	manifestPath := filepath.Join(outputDir, "manifest.json")
 	if err := writeFile(manifestPath, dockerManifestBytes); err != nil {
 		return fmt.Errorf("failed to write manifest.json: %w", err)
 	}
 
 	// Create image.tar
 	filesToTar := append([]string{"manifest.json", "config.json", "oci-manifest.json"}, layerFiles...)
-	if err := createTar("image.tar", filesToTar); err != nil {
+	if err := createTar(filepath.Join(outputDir, "image.tar"), filesToTar, outputDir); err != nil {
 		return fmt.Errorf("failed to create tar: %w", err)
 	}
 
@@ -370,7 +364,7 @@ func isAllowedMediaType(mt string) bool {
 	return false
 }
 
-func createTar(tarPath string, files []string) error {
+func createTar(tarPath string, files []string, baseDir string) error {
 	tarFile, err := os.Create(tarPath)
 	if err != nil {
 		return err
@@ -381,7 +375,7 @@ func createTar(tarPath string, files []string) error {
 	defer tw.Close()
 
 	for _, file := range files {
-		fullPath := file
+		fullPath := filepath.Join(baseDir, file)
 		info, err := os.Stat(fullPath)
 		if err != nil {
 			return fmt.Errorf("failed to stat file %s: %w", fullPath, err)

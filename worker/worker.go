@@ -117,7 +117,7 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 			response.FailureMessage = err.Error()
 			response.Status = models.TaskRunStatusFailed
 		} else {
-			response.Status = models.TaskRunStatusFailed
+			response.Status = models.TaskRunStatusFinished
 		}
 
 		responseJson, err := json.Marshal(response)
@@ -157,13 +157,13 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 
 	w.logger.Info("Fetching image", zap.String("image", ociArtifactURL))
 
-	err = fetchImage(registryType, "", ociArtifactURL, getCredsFromParams(request.Params))
+	err = fetchImage(registryType, fmt.Sprintf("run-%q", request.RunID), ociArtifactURL, getCredsFromParams(request.Params))
 	if err != nil {
 		w.logger.Error("failed to fetch image", zap.String("image", ociArtifactURL), zap.Error(err))
 		return err
 	}
 
-	err = showFiles()
+	err = showFiles(fmt.Sprintf("run-%q", request.RunID))
 	if err != nil {
 		w.logger.Error("failed to show files", zap.Error(err))
 		return err
@@ -214,20 +214,15 @@ func getCredsFromParams(params map[string]string) Credentials {
 	return creds
 }
 
-func showFiles() error {
-	currentDir, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-
+func showFiles(dir string) error {
 	// List the files in the current directory
-	files, err := ioutil.ReadDir(currentDir)
+	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return err
 	}
 
 	// Print each file or directory name
-	fmt.Printf("Listing files in directory: %s\n", currentDir)
+	fmt.Printf("Listing files in directory: %s\n", dir)
 	for _, file := range files {
 		if file.IsDir() {
 			fmt.Printf("[DIR] %s\n", file.Name())
