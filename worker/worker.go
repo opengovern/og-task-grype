@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	fmt "fmt"
 	"github.com/nats-io/nats.go/jetstream"
+	"github.com/opencomply/og-task-grype/task"
 	"github.com/opengovern/og-util/pkg/jq"
 	"github.com/opengovern/opencomply/services/tasks/db/models"
 	"github.com/opengovern/opencomply/services/tasks/scheduler"
@@ -80,10 +81,10 @@ func (w *Worker) Run(ctx context.Context) error {
 			}
 		}()
 
-		//err := w.ProcessMessage(ctx, msg)
-		//if err != nil {
-		//	w.logger.Error("failed to process message", zap.Error(err))
-		//}
+		err := w.ProcessMessage(ctx, msg)
+		if err != nil {
+			w.logger.Error("failed to process message", zap.Error(err))
+		}
 		ticker.Stop()
 
 		if err := msg.Ack(); err != nil {
@@ -112,7 +113,10 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 		return err
 	}
 
-	var response *scheduler.TaskResponse
+	response := &scheduler.TaskResponse{
+		RunID:  request.RunID,
+		Status: models.TaskRunStatusInProgress,
+	}
 
 	defer func() {
 		if err != nil {
@@ -133,8 +137,6 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 		}
 	}()
 
-	response.RunID = request.RunID
-	response.Status = models.TaskRunStatusInProgress
 	responseJson, err := json.Marshal(response)
 	if err != nil {
 		w.logger.Error("failed to create response json", zap.Error(err))
@@ -145,11 +147,11 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 		w.logger.Error("failed to publish job in progress", zap.String("response", string(responseJson)), zap.Error(err))
 	}
 
-	//err = task.RunTask(ctx, w.logger, request, response)
-	//if err != nil {
-	//	w.logger.Error("failed to publish job result", zap.String("response", string(responseJson)), zap.Error(err))
-	//	return err
-	//}
+	err = task.RunTask(ctx, w.logger, request, response)
+	if err != nil {
+		w.logger.Error("failed to publish job result", zap.String("response", string(responseJson)), zap.Error(err))
+		return err
+	}
 	response.Status = models.TaskRunStatusFinished
 
 	return nil
