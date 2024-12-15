@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	fmt "fmt"
 	"github.com/nats-io/nats.go/jetstream"
-	"github.com/opencomply/og-task-grype/task"
 	"github.com/opengovern/og-util/pkg/jq"
 	"github.com/opengovern/opencomply/services/tasks/db/models"
 	"github.com/opengovern/opencomply/services/tasks/scheduler"
@@ -67,25 +66,25 @@ func (w *Worker) Run(ctx context.Context) error {
 	}, []jetstream.PullConsumeOpt{
 		jetstream.PullMaxMessages(1),
 	}, func(msg jetstream.Msg) {
-		//w.logger.Info("received a new job")
-		//w.logger.Info("committing")
-		//if err := msg.InProgress(); err != nil {
-		//	w.logger.Error("failed to send the initial in progress message", zap.Error(err), zap.Any("msg", msg))
-		//}
-		//ticker := time.NewTicker(15 * time.Second)
-		//go func() {
-		//	for range ticker.C {
-		//		if err := msg.InProgress(); err != nil {
-		//			w.logger.Error("failed to send an in progress message", zap.Error(err), zap.Any("msg", msg))
-		//		}
-		//	}
-		//}()
+		w.logger.Info("received a new job")
+		w.logger.Info("committing")
+		if err := msg.InProgress(); err != nil {
+			w.logger.Error("failed to send the initial in progress message", zap.Error(err), zap.Any("msg", msg))
+		}
+		ticker := time.NewTicker(15 * time.Second)
+		go func() {
+			for range ticker.C {
+				if err := msg.InProgress(); err != nil {
+					w.logger.Error("failed to send an in progress message", zap.Error(err), zap.Any("msg", msg))
+				}
+			}
+		}()
 
-		//err := w.ProcessMessage(ctx, msg)
-		//if err != nil {
-		//	w.logger.Error("failed to process message", zap.Error(err))
-		//}
-		//ticker.Stop()
+		err := w.ProcessMessage(ctx, msg)
+		if err != nil {
+			w.logger.Error("failed to process message", zap.Error(err))
+		}
+		ticker.Stop()
 
 		if err := msg.Ack(); err != nil {
 			w.logger.Error("failed to send the ack message", zap.Error(err), zap.Any("msg", msg))
@@ -146,11 +145,11 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 		w.logger.Error("failed to publish job in progress", zap.String("response", string(responseJson)), zap.Error(err))
 	}
 
-	err = task.RunTask(ctx, w.logger, request, response)
-	if err != nil {
-		w.logger.Error("failed to publish job result", zap.String("response", string(responseJson)), zap.Error(err))
-		return err
-	}
+	//err = task.RunTask(ctx, w.logger, request, response)
+	//if err != nil {
+	//	w.logger.Error("failed to publish job result", zap.String("response", string(responseJson)), zap.Error(err))
+	//	return err
+	//}
 	response.Status = models.TaskRunStatusFinished
 
 	return nil
