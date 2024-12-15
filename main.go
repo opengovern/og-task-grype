@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/opencomply/og-task-template/worker"
+	"github.com/opencomply/og-task-grype/worker"
 	"golang.org/x/net/context"
 	"os"
 	"os/signal"

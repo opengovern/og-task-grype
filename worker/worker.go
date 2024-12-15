@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	fmt "fmt"
 	"github.com/nats-io/nats.go/jetstream"
-	"github.com/opencomply/og-task-template/task"
+	"github.com/opencomply/og-task-grype/task"
 	"github.com/opengovern/og-util/pkg/jq"
 	"github.com/opengovern/opencomply/services/tasks/db/models"
 	"github.com/opengovern/opencomply/services/tasks/scheduler"
