@@ -157,13 +157,13 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 
 	w.logger.Info("Fetching image", zap.String("image", ociArtifactURL))
 
-	err = fetchImage(registryType, fmt.Sprintf("run-%q", request.RunID), ociArtifactURL, getCredsFromParams(request.Params))
+	err = fetchImage(registryType, fmt.Sprintf("run-%v", request.RunID), ociArtifactURL, getCredsFromParams(request.Params))
 	if err != nil {
 		w.logger.Error("failed to fetch image", zap.String("image", ociArtifactURL), zap.Error(err))
 		return err
 	}
 
-	err = showFiles(fmt.Sprintf("run-%q", request.RunID))
+	err = showFiles(fmt.Sprintf("run-%v", request.RunID))
 	if err != nil {
 		w.logger.Error("failed to show files", zap.Error(err))
 		return err
@@ -172,7 +172,7 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 	w.logger.Info("Scanning image", zap.String("image", "image.tar"))
 
 	// Run the Grype command
-	cmd := exec.Command("grype", "image.tar")
+	cmd := exec.Command("grype", fmt.Sprintf("run-%v/%s", request.RunID, "image.tar"))
 
 	output, err := cmd.CombinedOutput()
 	w.logger.Info("output", zap.String("output", string(output)))
