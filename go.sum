@@ -170,6 +170,14 @@ github.com/opencontainers/image-spec v1.1.0 h1:8SG7/vwALn54lVB/0yZ/MMwhFrPYtpEHQ
 github.com/opencontainers/image-spec v1.1.0/go.mod h1:W4s4sFTMaBeK1BQLXbG4AdM2szdn85PY75RI83NrTrM=
 github.com/opengovern/og-util v1.1.9 h1:Pswy4yOEcUS9FZW/3ThTBNNtRdyhhGdW9oj/GJ5WpwY=
 github.com/opengovern/og-util v1.1.9/go.mod h1:dyn8rhmxq59o1jnbgGfmcUvW7iB/eN6OxoTUUx6jEHA=
+github.com/opengovern/og-util v1.1.10 h1:GfHcTSz1/JQ32xlbyoG5g2PYani5gX9TLT3fOqhYN6w=
+github.com/opengovern/og-util v1.1.10/go.mod h1:dyn8rhmxq59o1jnbgGfmcUvW7iB/eN6OxoTUUx6jEHA=
+github.com/opengovern/og-util v1.1.11 h1:mJnri4Bgl+6dBu7+5gMjvZMG7K7F6VCBhqn2NoTq7bk=
+github.com/opengovern/og-util v1.1.11/go.mod h1:dyn8rhmxq59o1jnbgGfmcUvW7iB/eN6OxoTUUx6jEHA=
+github.com/opengovern/og-util v1.1.12 h1:D/fIm5qernDnneN0gGyLClFhnE7mWAdD0UfFufV4+Zc=
+github.com/opengovern/og-util v1.1.12/go.mod h1:dyn8rhmxq59o1jnbgGfmcUvW7iB/eN6OxoTUUx6jEHA=
+github.com/opengovern/og-util v1.1.13 h1:WFL0hOaKtzpGLk5xGM8QeLs4Dn02JG0m7xIAgepo5yg=
+github.com/opengovern/og-util v1.1.13/go.mod h1:dyn8rhmxq59o1jnbgGfmcUvW7iB/eN6OxoTUUx6jEHA=
 github.com/opengovern/opencomply v0.524.1 h1:0l38VCuRwmkyHsCHusWAMfq8ic111Da4z1eASEl+hIw=
 github.com/opengovern/opencomply v0.524.1/go.mod h1:LnCUAuO6yKZv2BzOnxgJv4GjA6t0TXf7/xIgPxUBjl8=
 github.com/opengovern/opencomply v0.524.14 h1:bpaoUnmAQQVEnndSDXfdKVo/J5L7QQ888qc1BG+hhfc=

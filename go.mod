@@ -1,11 +1,11 @@
-module github.com/opencomply/og-task-grype
+module github.com/opengovern/og-task-grype
 
 go 1.23.3
 
 require (
 	github.com/nats-io/nats.go v1.37.0
 	github.com/opencontainers/image-spec v1.1.0
-	github.com/opengovern/og-util v1.1.9
+	github.com/opengovern/og-util v1.1.13
 	github.com/opengovern/opencomply v0.524.14
 	github.com/opengovern/resilient-bridge v0.0.0-20241215000157-ad74ef2e3cbe
 	github.com/spf13/cobra v1.8.1

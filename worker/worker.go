@@ -3,10 +3,11 @@ package worker
 import (
 	"context"
 	"encoding/json"
-	fmt "fmt"
+	"fmt"
 	"github.com/nats-io/nats.go/jetstream"
-	"github.com/opencomply/og-task-grype/task"
+	"github.com/opengovern/og-task-grype/task"
 	"github.com/opengovern/og-util/pkg/jq"
+	"github.com/opengovern/og-util/pkg/tasks"
 	"github.com/opengovern/opencomply/services/tasks/db/models"
 	"github.com/opengovern/opencomply/services/tasks/scheduler"
 	"github.com/opengovern/opencomply/services/tasks/worker/consts"
@@ -107,14 +108,14 @@ func (w *Worker) Run(ctx context.Context) error {
 }
 
 func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err error) {
-	var request scheduler.TaskRequest
+	var request tasks.TaskRequest
 	if err := json.Unmarshal(msg.Data(), &request); err != nil {
 		w.logger.Error("Failed to unmarshal ComplianceReportJob results", zap.Error(err))
 		return err
 	}
 
 	response := &scheduler.TaskResponse{
-		RunID:  request.RunID,
+		RunID:  request.TaskDefinition.RunID,
 		Status: models.TaskRunStatusInProgress,
 	}
 
@@ -132,7 +133,7 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 			return
 		}
 
-		if _, err := w.jq.Produce(ctx, ResultTopicName, responseJson, fmt.Sprintf("task-run-result-%d", request.RunID)); err != nil {
+		if _, err := w.jq.Produce(ctx, ResultTopicName, responseJson, fmt.Sprintf("task-run-result-%d", request.TaskDefinition.RunID)); err != nil {
 			w.logger.Error("failed to publish job result", zap.String("jobResult", string(responseJson)), zap.Error(err))
 		}
 	}()
@@ -143,7 +144,7 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 		return err
 	}
 
-	if _, err = w.jq.Produce(ctx, ResultTopicName, responseJson, fmt.Sprintf("task-run-inprogress-%d", request.RunID)); err != nil {
+	if _, err = w.jq.Produce(ctx, ResultTopicName, responseJson, fmt.Sprintf("task-run-inprogress-%d", request.TaskDefinition.RunID)); err != nil {
 		w.logger.Error("failed to publish job in progress", zap.String("response", string(responseJson)), zap.Error(err))
 	}
 
