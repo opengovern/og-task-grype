@@ -2,11 +2,12 @@ package task
 
 type OciArtifactVulnerabilities struct {
 	ImageURL        string               `json:"imageUrl"`
+	ArtifactDigest  string               `json:"artifactDigest"`
 	Vulnerabilities []VulnerabilityMatch `json:"Vulnerabilities"`
 }
 
 func (r OciArtifactVulnerabilities) UniqueID() string {
-	return r.ImageURL
+	return r.ArtifactDigest
 }
 
 type GrypeOutput struct {

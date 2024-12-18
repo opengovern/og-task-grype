@@ -16,7 +16,7 @@ import (
 )
 
 func RunTask(ctx context.Context, esClient opengovernance.Client, logger *zap.Logger, request tasks.TaskRequest, response *scheduler.TaskResponse) error {
-	var ociArtifactURL, registryType string
+	var ociArtifactURL, registryType, artifactDigest string
 	if v, ok := request.TaskDefinition.Params["oci_artifact_url"]; ok {
 		ociArtifactURL = v
 	} else {
@@ -27,6 +27,7 @@ func RunTask(ctx context.Context, esClient opengovernance.Client, logger *zap.Lo
 	} else {
 		registryType = "ghcr"
 	}
+	artifactDigest, _ = request.TaskDefinition.Params["artifact_digest"]
 
 	logger.Info("Fetching image", zap.String("image", ociArtifactURL))
 
@@ -61,6 +62,7 @@ func RunTask(ctx context.Context, esClient opengovernance.Client, logger *zap.Lo
 
 	result := OciArtifactVulnerabilities{
 		ImageURL:        ociArtifactURL,
+		ArtifactDigest:  artifactDigest,
 		Vulnerabilities: grypeOutput.Matches,
 	}
 
