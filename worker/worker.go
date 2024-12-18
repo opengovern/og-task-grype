@@ -7,6 +7,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/opengovern/og-task-container-vulnerability/task"
 	"github.com/opengovern/og-util/pkg/jq"
+	"github.com/opengovern/og-util/pkg/opengovernance-es-sdk"
 	"github.com/opengovern/og-util/pkg/tasks"
 	"github.com/opengovern/opencomply/services/tasks/db/models"
 	"github.com/opengovern/opencomply/services/tasks/scheduler"
