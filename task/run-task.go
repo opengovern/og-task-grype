@@ -3,8 +3,8 @@ package task
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/opengovern/og-task-grype/results"
 	"github.com/opengovern/og-util/pkg/es"
+	"github.com/opengovern/og-util/pkg/opengovernance-es-sdk"
 	"github.com/opengovern/og-util/pkg/tasks"
 	"github.com/opengovern/opencomply/services/tasks/scheduler"
 	"go.uber.org/zap"
@@ -15,12 +15,7 @@ import (
 	"time"
 )
 
-func RunTask(ctx context.Context, logger *zap.Logger, request tasks.TaskRequest, response *scheduler.TaskResponse) error {
-	rs, err := results.NewResourceSender(request.EsDeliverEndpoint, request.TaskDefinition.RunID, request.UseOpenSearch, logger)
-	if err != nil {
-		return fmt.Errorf("failed to connect to resource sender: %w", err)
-	}
-
+func RunTask(ctx context.Context, esClient opengovernance.Client, logger *zap.Logger, request tasks.TaskRequest, response *scheduler.TaskResponse) error {
 	var ociArtifactURL, registryType string
 	if v, ok := request.TaskDefinition.Params["oci_artifact_url"]; ok {
 		ociArtifactURL = v
@@ -35,7 +30,7 @@ func RunTask(ctx context.Context, logger *zap.Logger, request tasks.TaskRequest,
 
 	logger.Info("Fetching image", zap.String("image", ociArtifactURL))
 
-	err = fetchImage(registryType, fmt.Sprintf("run-%v", request.TaskDefinition.RunID), ociArtifactURL, getCredsFromParams(request.TaskDefinition.Params))
+	err := fetchImage(registryType, fmt.Sprintf("run-%v", request.TaskDefinition.RunID), ociArtifactURL, getCredsFromParams(request.TaskDefinition.Params))
 	if err != nil {
 		logger.Error("failed to fetch image", zap.String("image", ociArtifactURL), zap.Error(err))
 		return err
@@ -81,9 +76,15 @@ func RunTask(ctx context.Context, logger *zap.Logger, request tasks.TaskRequest,
 		DescribedBy:  strconv.FormatUint(uint64(request.TaskDefinition.RunID), 10),
 	}
 
-	rs.Send(esResult)
-
 	keys, idx := esResult.KeysAndIndex()
+	esResult.EsID = es.HashOf(keys...)
+	esResult.EsIndex = idx
+
+	err = sendDataToOpensearch(esClient.ES(), esResult)
+	if err != nil {
+		return err
+	}
+
 	response.Result = []byte(fmt.Sprintf("Response stored in elasticsearch index %s by id: %s", idx, es.HashOf(keys...)))
 
 	return nil

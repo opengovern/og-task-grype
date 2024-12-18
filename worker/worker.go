@@ -7,12 +7,14 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/opengovern/og-task-grype/task"
 	"github.com/opengovern/og-util/pkg/jq"
+	"github.com/opengovern/og-util/pkg/opengovernance-es-sdk"
 	"github.com/opengovern/og-util/pkg/tasks"
 	"github.com/opengovern/opencomply/services/tasks/db/models"
 	"github.com/opengovern/opencomply/services/tasks/scheduler"
 	"github.com/opengovern/opencomply/services/tasks/worker/consts"
 	"go.uber.org/zap"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -22,11 +24,20 @@ var (
 	StreamName      = os.Getenv(consts.NatsStreamNameEnv)
 	TopicName       = os.Getenv(consts.NatsTopicNameEnv)
 	ResultTopicName = os.Getenv(consts.NatsResultTopicNameEnv)
+
+	ESAddress       = os.Getenv(consts.ElasticSearchAddressEnv)
+	ESUsername      = os.Getenv(consts.ElasticSearchUsernameEnv)
+	ESPassword      = os.Getenv(consts.ElasticSearchPasswordEnv)
+	ESIsOnAks       = os.Getenv(consts.ElasticSearchIsOnAksNameEnv)
+	ESIsOpenSearch  = os.Getenv(consts.ElasticSearchIsOpenSearch)
+	ESAwsRegion     = os.Getenv(consts.ElasticSearchAwsRegionEnv)
+	ESAssumeRoleArn = os.Getenv(consts.ElasticSearchAssumeRoleArnEnv)
 )
 
 type Worker struct {
-	logger *zap.Logger
-	jq     *jq.JobQueue
+	logger   *zap.Logger
+	jq       *jq.JobQueue
+	esClient opengovernance.Client
 }
 
 func NewWorker(
@@ -46,9 +57,28 @@ func NewWorker(
 		return nil, err
 	}
 
+	isOnAks := false
+	isOnAks, _ = strconv.ParseBool(ESIsOnAks)
+	isOpenSearch := false
+	isOpenSearch, _ = strconv.ParseBool(ESIsOpenSearch)
+
+	esClient, err := opengovernance.NewClient(opengovernance.ClientConfig{
+		Addresses:     []string{ESAddress},
+		Username:      &ESUsername,
+		Password:      &ESPassword,
+		IsOnAks:       &isOnAks,
+		IsOpenSearch:  &isOpenSearch,
+		AwsRegion:     &ESAwsRegion,
+		AssumeRoleArn: &ESAssumeRoleArn,
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	w := &Worker{
-		logger: logger,
-		jq:     jq,
+		logger:   logger,
+		jq:       jq,
+		esClient: esClient,
 	}
 
 	return w, nil
@@ -148,7 +178,7 @@ func (w *Worker) ProcessMessage(ctx context.Context, msg jetstream.Msg) (err err
 		w.logger.Error("failed to publish job in progress", zap.String("response", string(responseJson)), zap.Error(err))
 	}
 
-	err = task.RunTask(ctx, w.logger, request, response)
+	err = task.RunTask(ctx, w.esClient, w.logger, request, response)
 	if err != nil {
 		w.logger.Error("failed to publish job result", zap.String("response", string(responseJson)), zap.Error(err))
 		return err
