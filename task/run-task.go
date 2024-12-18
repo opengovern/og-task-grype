@@ -27,7 +27,11 @@ func RunTask(ctx context.Context, esClient opengovernance.Client, logger *zap.Lo
 	} else {
 		registryType = "ghcr"
 	}
-	artifactDigest, _ = request.TaskDefinition.Params["artifact_digest"]
+	if v, ok := request.TaskDefinition.Params["artifact_digest"]; ok {
+		artifactDigest = v
+	} else {
+		return fmt.Errorf("OCI artifact digest parameter is not provided")
+	}
 
 	logger.Info("Fetching image", zap.String("image", ociArtifactURL))
 
