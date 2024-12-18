@@ -1,22 +1,26 @@
 package task
 
 type OciArtifactVulnerabilities struct {
-	ImageURL             string                    `json:"imageUrl"`
-	GrypeVulnerabilities []GrypeVulnerabilityMatch `json:"grypeVulnerabilities"`
+	ImageURL        string               `json:"imageUrl"`
+	Vulnerabilities []VulnerabilityMatch `json:"Vulnerabilities"`
 }
 
 func (r OciArtifactVulnerabilities) UniqueID() string {
 	return r.ImageURL
 }
 
-type GrypeVulnerabilityMatch struct {
-	Vulnerability          GrypeVulnerability   `json:"vulnerability"`
-	RelatedVulnerabilities []GrypeVulnerability `json:"relatedVulnerabilities"`
-	MatchDetail            interface{}          `json:"matchDetail"`
-	Artifact               interface{}          `json:"artifact"`
+type GrypeOutput struct {
+	Matches []VulnerabilityMatch `json:"matches"`
 }
 
-type GrypeVulnerability struct {
+type VulnerabilityMatch struct {
+	Vulnerability          Vulnerability   `json:"vulnerability"`
+	RelatedVulnerabilities []Vulnerability `json:"relatedVulnerabilities"`
+	MatchDetail            interface{}     `json:"matchDetail"`
+	Artifact               interface{}     `json:"artifact"`
+}
+
+type Vulnerability struct {
 	ID          string             `json:"id"`
 	DataSource  string             `json:"dataSource"`
 	Namespace   string             `json:"namespace"`

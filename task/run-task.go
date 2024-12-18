@@ -9,7 +9,6 @@ import (
 	"github.com/opengovern/opencomply/services/tasks/scheduler"
 	"go.uber.org/zap"
 	"golang.org/x/net/context"
-	"io/ioutil"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -60,12 +59,14 @@ func RunTask(ctx context.Context, logger *zap.Logger, request tasks.TaskRequest,
 		return err
 	}
 
-	var vulnerabilities []GrypeVulnerabilityMatch
-	err = json.Unmarshal(output, &vulnerabilities)
+	var grypeOutput GrypeOutput
+	err = json.Unmarshal(output, &grypeOutput)
+
+	logger.Info("grypeOutput", zap.Any("grypeOutput", grypeOutput))
 
 	result := OciArtifactVulnerabilities{
-		ImageURL:             ociArtifactURL,
-		GrypeVulnerabilities: vulnerabilities,
+		ImageURL:        ociArtifactURL,
+		Vulnerabilities: grypeOutput.Matches,
 	}
 
 	esResult := &es.TaskResult{
@@ -85,45 +86,5 @@ func RunTask(ctx context.Context, logger *zap.Logger, request tasks.TaskRequest,
 	keys, idx := esResult.KeysAndIndex()
 	response.Result = []byte(fmt.Sprintf("Response stored in elasticsearch index %s by id: %s", idx, es.HashOf(keys...)))
 
-	return nil
-}
-
-func getCredsFromParams(params map[string]string) Credentials {
-	creds := Credentials{}
-	for k, v := range params {
-		switch k {
-		case "github_username":
-			creds.GithubUsername = v
-		case "github_token":
-			creds.GithubToken = v
-		case "ecr_account_id":
-			creds.ECRAccountID = v
-		case "ecr_region":
-			creds.ECRRegion = v
-		case "acr_login_server":
-			creds.ACRLoginServer = v
-		case "acr_tenant_id":
-			creds.ACRTenantID = v
-		}
-	}
-	return creds
-}
-
-func showFiles(dir string) error {
-	// List the files in the current directory
-	files, err := ioutil.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-
-	// Print each file or directory name
-	fmt.Printf("Listing files in directory: %s\n", dir)
-	for _, file := range files {
-		if file.IsDir() {
-			fmt.Printf("[DIR] %s\n", file.Name())
-		} else {
-			fmt.Printf("[FILE] %s\n", file.Name())
-		}
-	}
 	return nil
 }
