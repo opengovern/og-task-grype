@@ -1,4 +1,4 @@
-module github.com/opengovern/og-task-grype
+module github.com/opengovern/og-task-container-vulnerability
 
 go 1.23.3
 

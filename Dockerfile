@@ -19,7 +19,7 @@ RUN chmod 1777 /tmp
 # Build your Go binary
 WORKDIR /app
 COPY . .
-RUN go build -o og-task-grype main.go
+RUN go build -o og-task-container-vulnerability main.go
 
 # Final minimal image
 FROM scratch
@@ -33,8 +33,8 @@ COPY --from=build /usr/local/bin/grype /usr/local/bin/grype
 # Copy /tmp directory
 COPY --from=build /tmp /tmp
 
-# Copy og-task-grype binary
-COPY --from=build /app/og-task-grype /og-task-grype
+# Copy og-task-container-vulnerability binary
+COPY --from=build /app/og-task-container-vulnerability /og-task-container-vulnerability
 
 # Copy the database into the default location
 COPY --from=build /.cache/grype/db /.cache/grype/db

@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/opengovern/og-task-grype/worker"
+	"github.com/opengovern/og-task-container-vulnerability/worker"
 	"golang.org/x/net/context"
 	"os"
 	"os/signal"
