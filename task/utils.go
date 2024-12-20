@@ -11,22 +11,34 @@ import (
 	"io/ioutil"
 )
 
-func getCredsFromParams(params map[string]string) Credentials {
+func getCredsFromParams(params map[string][]string) Credentials {
 	creds := Credentials{}
 	for k, v := range params {
 		switch k {
 		case "github_username":
-			creds.GithubUsername = v
+			if len(v) > 0 {
+				creds.GithubUsername = v[0]
+			}
 		case "github_token":
-			creds.GithubToken = v
+			if len(v) > 0 {
+				creds.GithubToken = v[0]
+			}
 		case "ecr_account_id":
-			creds.ECRAccountID = v
+			if len(v) > 0 {
+				creds.ECRAccountID = v[0]
+			}
 		case "ecr_region":
-			creds.ECRRegion = v
+			if len(v) > 0 {
+				creds.ECRRegion = v[0]
+			}
 		case "acr_login_server":
-			creds.ACRLoginServer = v
+			if len(v) > 0 {
+				creds.ACRLoginServer = v[0]
+			}
 		case "acr_tenant_id":
-			creds.ACRTenantID = v
+			if len(v) > 0 {
+				creds.ACRTenantID = v[0]
+			}
 		}
 	}
 	return creds
