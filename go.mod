@@ -6,12 +6,12 @@ require (
 	github.com/nats-io/nats.go v1.37.0
 	github.com/opencontainers/image-spec v1.1.0
 	github.com/opengovern/og-util v1.2.1
-	github.com/opengovern/opencomply v0.538.3
+	github.com/opengovern/opencomply v0.541.10
 	github.com/opengovern/resilient-bridge v0.0.0-20241215000157-ad74ef2e3cbe
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/spf13/cobra v1.8.1
 	go.uber.org/zap v1.27.0
-	golang.org/x/net v0.31.0
+	golang.org/x/net v0.33.0
 	google.golang.org/grpc v1.67.1
 	google.golang.org/protobuf v1.35.1
 	oras.land/oras-go/v2 v2.5.0
