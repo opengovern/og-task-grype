@@ -721,8 +721,6 @@ github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/image-spec v1.1.0 h1:8SG7/vwALn54lVB/0yZ/MMwhFrPYtpEHQb2IpWsCzug=
 github.com/opencontainers/image-spec v1.1.0/go.mod h1:W4s4sFTMaBeK1BQLXbG4AdM2szdn85PY75RI83NrTrM=
-github.com/opengovern/og-util v1.1.13 h1:WFL0hOaKtzpGLk5xGM8QeLs4Dn02JG0m7xIAgepo5yg=
-github.com/opengovern/og-util v1.1.13/go.mod h1:dyn8rhmxq59o1jnbgGfmcUvW7iB/eN6OxoTUUx6jEHA=
 github.com/opengovern/og-util v1.2.1 h1:jTYMnJ4au3b9YsLbkmsYvFORrCeUlG79KGH66b8XWWI=
 github.com/opengovern/og-util v1.2.1/go.mod h1:Q7Pd/1SzDtYoF3iAd4/FSBmFihis+7OIeDpU94xawXQ=
 github.com/opengovern/opencomply v0.538.3 h1:P7yUz0CsBKfX5uJzzlSb89blJ+iBBQYAb5Mvd/d4eFU=
